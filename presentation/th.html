@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MYIB WMS — ระบบบริหารคลังสินค้า</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;600;800;900&display=swap" rel="stylesheet">
+<style>
+:root{--or:#EF6A10;--or2:#FF8A3D;--ink:#1D1A18;--sub:#6E6762;--soft:#F6F1EC;--card:#FFFFFF;--line:#ECE4DD;--ok:#1F8F4E;--bad:#D4314F;--bg:#E9E4DF}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);font-family:"Noto Sans Thai",system-ui,sans-serif;color:var(--ink);-webkit-print-color-adjust:exact;print-color-adjust:exact}
+/* toolbar */
+.bar{position:sticky;top:0;z-index:50;display:flex;gap:10px;align-items:center;justify-content:center;padding:10px 16px;background:rgba(29,26,24,.92);color:#fff;font-size:14px;backdrop-filter:blur(8px)}
+.bar b{margin-right:auto;font-weight:800;letter-spacing:.2px}
+.bar button{border:0;border-radius:999px;padding:9px 18px;font:inherit;font-weight:700;cursor:pointer;background:#fff;color:var(--ink)}
+.bar button.pri{background:var(--or);color:#fff}
+.bar small{opacity:.7;margin-left:6px}
+/* slides: fixed 1920×1080, scaled to the window */
+.deck{display:flex;flex-direction:column;align-items:center;gap:28px;padding:28px 16px 60px}
+.frame{position:relative;width:100%;max-width:1600px;aspect-ratio:16/9;overflow:hidden;border-radius:14px;box-shadow:0 20px 50px rgba(0,0,0,.18)}
+.slide{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;background:#FBF8F5;overflow:hidden}
+.pn{position:absolute;right:56px;bottom:30px;font-size:22px;font-weight:800;color:#B7ADA6;letter-spacing:1px;z-index:5;background:rgba(251,248,245,.92);border-radius:999px;padding:4px 14px}
+.cover .pn{background:transparent}
+.brand{position:absolute;left:96px;top:64px;display:flex;align-items:center;gap:18px}
+.brand img{height:30px}
+.brand .lg{background:var(--ink);border-radius:999px;padding:12px 22px;display:flex}
+.brand span{font-size:20px;font-weight:700;color:var(--sub);border-left:2px solid var(--line);padding-left:18px}
+.eyebrow{font-size:28px;font-weight:800;color:var(--or);letter-spacing:1px;margin-bottom:14px}
+h1{font-size:150px;line-height:1.02;font-weight:900;letter-spacing:-3px}
+h2{font-size:96px;line-height:1.08;font-weight:900;letter-spacing:-2px}
+.acc{color:var(--or)}
+.lead{font-size:40px;line-height:1.45;color:var(--sub);font-weight:600}
+/* layout: text left, picture right */
+.feat{display:grid;grid-template-columns:560px 1fr;gap:60px;align-items:center;position:absolute;inset:150px -150px 70px 96px}
+.feat .tx h2{font-size:84px;margin-bottom:22px}
+.feat .win{border-radius:22px 0 0 22px}
+.feat .tx .lead{font-size:36px}
+.chips{display:flex;flex-wrap:wrap;gap:12px;margin-top:34px}
+.chip{background:#fff;border:2px solid var(--line);border-radius:999px;padding:10px 22px;font-size:26px;font-weight:800;color:var(--ink)}
+.chip i{font-style:normal;color:var(--or);margin-right:8px}
+/* browser mock-up */
+.win{background:#fff;border-radius:22px;box-shadow:0 30px 70px rgba(60,30,10,.22),0 0 0 1px rgba(0,0,0,.05);overflow:hidden}
+.win .tb{height:44px;background:#F1ECE7;display:flex;align-items:center;gap:9px;padding:0 18px}
+.win .tb i{width:14px;height:14px;border-radius:50%;background:#E66;display:block}.win .tb i:nth-child(2){background:#F2B544}.win .tb i:nth-child(3){background:#5BC46A}
+.win .tb em{margin-left:16px;flex:1;height:24px;border-radius:12px;background:#fff;font-style:normal;font-size:14px;color:#9A918A;display:flex;align-items:center;padding-left:14px}
+.win img{display:block;width:100%}
+.crop{overflow:hidden}
+.crop img{width:100%;display:block}
+/* phone mock-up */
+.phone{width:330px;border-radius:52px;background:#1D1A18;padding:13px;box-shadow:0 30px 60px rgba(40,20,10,.3)}
+.phone .scr{border-radius:40px;overflow:hidden;background:#fff;aspect-ratio:390/844}
+.phone img{width:100%;display:block}
+/* cards */
+.grid{display:grid;gap:28px}
+.card{background:#fff;border-radius:28px;padding:34px 36px;box-shadow:0 10px 30px rgba(60,30,10,.07);border:1px solid var(--line)}
+.ic{width:84px;height:84px;border-radius:24px;display:flex;align-items:center;justify-content:center;font-size:46px;margin-bottom:20px}
+.ic.r{background:#FDE8EC}.ic.o{background:#FFEEDF}.ic.g{background:#E3F5EA}.ic.b{background:#E7EEFD}.ic.p{background:#F1E8FD}
+.card b{display:block;font-size:42px;font-weight:900;line-height:1.2}
+.grid[style*="repeat(4"] .card{padding:26px 32px}.grid[style*="repeat(4"] .ic{margin-bottom:14px}
+.card small{display:block;font-size:26px;color:var(--sub);margin-top:8px;font-weight:600;line-height:1.4}
+/* problem → solution rows */
+.pair{display:grid;grid-template-columns:1fr 70px 1fr;align-items:center;gap:18px;margin-bottom:22px}
+.pair .p,.pair .s{border-radius:24px;padding:24px 32px;font-size:38px;font-weight:800}
+.pair .p{background:#fff;color:#9C3B4D;border:2px solid #F6D3DA}
+.pair .s{background:var(--ink);color:#fff}
+.pair .s em{font-style:normal;color:var(--or2)}
+.pair .ar{font-size:50px;color:var(--or);text-align:center;font-weight:900}
+.cover-bg{position:absolute;inset:0;background:radial-gradient(900px 600px at 85% 30%,rgba(239,106,16,.28),transparent 70%),radial-gradient(700px 500px at 10% 100%,rgba(239,106,16,.12),transparent 70%),#1D1A18}
+.cover h1,.cover .lead{color:#fff}.cover .lead{color:#D9CFC8}
+.badge{display:inline-flex;align-items:center;gap:12px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);color:#fff;border-radius:999px;padding:12px 26px;font-size:26px;font-weight:700}
+.num{font-size:120px;font-weight:900;color:var(--or);line-height:1}
+@media print{
+  @page{size:1920px 1080px;margin:0}
+  html,body{background:#fff}
+  .bar{display:none}
+  .deck{display:block;padding:0;gap:0}
+  .frame{width:1920px;height:1080px;max-width:none;aspect-ratio:auto;border-radius:0;box-shadow:none;page-break-after:always;break-after:page}
+  .slide{transform:none!important}
+}
+/* presenting: one slide fills the screen */
+body.show .bar,body.show .frame:not(.cur){display:none}
+body.show{background:#000;overflow:hidden}
+body.show .deck{padding:0;height:100vh;justify-content:center}
+body.show .frame.cur{max-width:none;width:min(100vw,177.78vh);border-radius:0;box-shadow:none}
+
+/* custom-drawn icons (replace emoji) */
+svg.i{width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;overflow:visible;flex:0 0 auto;vertical-align:-.15em}
+svg.i .ac{fill:currentColor;opacity:.16;stroke:none}svg.i .f,svg.i .ac2{fill:currentColor}svg.i .bg{fill:var(--icbg,#fff)}
+.ic svg.i{width:54px;height:54px}
+.ic.r{color:#D4314F;--icbg:#FDE8EC}.ic.o{color:#E0600C;--icbg:#FFEEDF}.ic.g{color:#1F8F4E;--icbg:#E3F5EA}.ic.b{color:#2F5FD0;--icbg:#E7EEFD}.ic.p{color:#7C3AED;--icbg:#F1E8FD}
+.badge svg.i{width:1.15em;height:1.15em;--icbg:#2a2522}
+.bar svg.i{width:1.05em;height:1.05em;margin-right:6px}
+
+/* staged screenshots */
+.feat{inset:150px 96px 70px 96px}
+.stage{position:relative;height:100%;display:flex;align-items:center;justify-content:flex-end}
+.stage-bg{position:absolute;top:-40px;bottom:-30px;left:30px;right:-96px;border-radius:56px 0 0 56px;overflow:hidden;
+  background:radial-gradient(circle at 85% 12%,rgba(255,138,61,.42),transparent 42%),radial-gradient(circle at 10% 95%,rgba(239,106,16,.20),transparent 48%),linear-gradient(140deg,#FFE7D6 0%,#FFF4EB 55%,#FBEFE6 100%)}
+.stage-bg::before{content:"";position:absolute;inset:0;background-image:radial-gradient(rgba(170,90,40,.20) 1.6px,transparent 1.7px);background-size:26px 26px;-webkit-mask-image:linear-gradient(120deg,transparent 15%,#000 60%);mask-image:linear-gradient(120deg,transparent 15%,#000 60%)}
+.stage-bg::after{content:"";position:absolute;width:420px;height:420px;right:-120px;bottom:-160px;border-radius:50%;border:60px solid rgba(239,106,16,.10)}
+.win.w2{position:relative;width:90%;margin-right:10px;border-radius:24px;transform:perspective(2200px) rotateY(-6deg) rotateX(2deg);transform-origin:70% 50%;
+  box-shadow:0 50px 90px -20px rgba(80,35,10,.38),0 18px 40px rgba(80,35,10,.14),0 0 0 1px rgba(0,0,0,.04)}
+.fc{position:relative;overflow:hidden;width:100%;background:#F4F1EE}
+.fc img{position:absolute;max-width:none;display:block}
+.zoom{position:absolute;z-index:3;background:#fff;border-radius:24px;padding:14px;border:1px solid rgba(0,0,0,.05);
+  box-shadow:0 36px 70px -14px rgba(80,35,10,.40),0 10px 24px rgba(80,35,10,.12);transform:rotate(-1.2deg)}
+.zoom.bl{left:-10px;bottom:-6px}
+.zoom .zl{display:flex;align-items:center;gap:10px;font-size:22px;font-weight:800;color:var(--ink);margin:2px 6px 12px}
+.zoom .zl i{width:12px;height:12px;border-radius:50%;background:var(--or);box-shadow:0 0 0 6px rgba(239,106,16,.16);flex:0 0 auto}
+.zoom .fc{border-radius:14px;outline:1px solid rgba(0,0,0,.05)}
+/* phones slide: same backdrop */
+.phones-bg{position:absolute;left:720px;right:0;top:120px;bottom:0;border-radius:56px 0 0 0;overflow:hidden;
+  background:radial-gradient(circle at 80% 15%,rgba(255,138,61,.40),transparent 45%),linear-gradient(140deg,#FFE7D6,#FFF4EB 60%,#FBEFE6)}
+.phones-bg::before{content:"";position:absolute;inset:0;background-image:radial-gradient(rgba(170,90,40,.18) 1.6px,transparent 1.7px);background-size:26px 26px;-webkit-mask-image:linear-gradient(120deg,transparent 20%,#000 65%);mask-image:linear-gradient(120deg,transparent 20%,#000 65%)}
+</style>
+</head>
+<body><svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs><symbol id="i-laptop" viewBox="0 0 32 32"><rect x="6" y="7" width="20" height="13.5" rx="2.2"/><path class="ac" d="M8.5 9.5h15v8.5h-15z"/><path d="M3 24.5h26l-2 2.5H5z"/><path d="M13.5 22.5h5"/></symbol><symbol id="i-phone" viewBox="0 0 32 32"><rect x="9.5" y="3.5" width="13" height="25" rx="3"/><path class="ac" d="M11.5 7h9v16.5h-9z"/><path d="M14.5 5.8h3"/><circle cx="16" cy="25.9" r=".9" class="f"/></symbol><symbol id="i-lang" viewBox="0 0 32 32"><circle cx="16" cy="16" r="12"/><path class="ac" d="M16 4a12 12 0 0 1 0 24c-3.5-3-5-7.5-5-12s1.5-9 5-12z"/><path d="M4 16h24M16 4c3.5 3 5 7.5 5 12s-1.5 9-5 12c-3.5-3-5-7.5-5-12s1.5-9 5-12z"/></symbol><symbol id="i-box" viewBox="0 0 32 32"><path d="M16 4 27 9.5v13L16 28 5 22.5v-13z"/><path class="ac" d="M5 9.5 16 15v13L5 22.5z"/><path d="M5 9.5 16 15l11-5.5M16 15v13M10.5 6.8l11 5.5v4.4"/></symbol><symbol id="i-boxDiff" viewBox="0 0 32 32"><path d="M15 4 25 9v11.5L15 25.5 5 20.5V9z"/><path class="ac" d="M5 9l10 5v11.5L5 20.5z"/><path d="M5 9l10 5 10-5M15 14v11.5"/><circle cx="24" cy="23.5" r="5.8" class="bg"/><path d="M21.6 22h4.8M21.6 25h4.8M25.4 20.2l-2.8 6.6"/></symbol><symbol id="i-shelfSearch" viewBox="0 0 32 32"><path d="M4 5v22M20 5v6M4 10h16M4 17h10M4 24h8"/><path class="ac" d="M6.5 6.5h3.5v3.5H6.5zM12 6.5h4v3.5h-4zM6.5 13.5h4v3.5h-4z"/><circle cx="20.5" cy="20.5" r="5.5"/><path d="M24.6 24.6 28.5 28.5"/></symbol><symbol id="i-alarm" viewBox="0 0 32 32"><circle cx="16" cy="17.5" r="9.5"/><path class="ac" d="M16 8a9.5 9.5 0 0 1 9.5 9.5H16z"/><path d="M16 12.5v5.5l3.5 2.5M5 8.5 9 4.8M27 8.5 23 4.8M10 26l-2 2.5M22 26l2 2.5"/></symbol><symbol id="i-keyTypo" viewBox="0 0 32 32"><rect x="3.5" y="9" width="25" height="14" rx="2.6"/><path class="ac" d="M6 11.5h20v9H6z"/><path d="M7.5 13.5h1.5M11.5 13.5H13M15.5 13.5H17M7.5 17h1.5M11.5 17H13M10.5 20.5h8"/><circle cx="24.5" cy="9" r="5" class="bg"/><path d="M22.6 7.1l3.8 3.8M26.4 7.1l-3.8 3.8"/></symbol><symbol id="i-traceGone" viewBox="0 0 32 32"><path d="M6.5 11.5A11 11 0 1 1 5 16.5"/><path d="M6.8 5.5v6h6"/><path class="ac" d="M16 8a8 8 0 0 1 0 16z"/><path d="M13.5 13.5a2.6 2.6 0 1 1 3.6 2.4c-.8.4-1.1.9-1.1 1.8M16 21v.4"/></symbol><symbol id="i-soloSign" viewBox="0 0 32 32"><path d="M5 25.5c2.5 0 3.5-3 5.5-3s1.5 3 3.5 3 2.5-2 4.5-2"/><path class="ac" d="M17 15.5l6-6 3 3-6 6z"/><path d="M14.5 18.5l11-11a2.1 2.1 0 0 1 3 3l-11 11-4 1z"/><path d="M5 29h22"/></symbol><symbol id="i-dashboard" viewBox="0 0 32 32"><rect x="4" y="4" width="24" height="24" rx="3"/><path class="ac" d="M8 19h3.5v5H8zM14.2 14h3.5v10h-3.5zM20.5 9h3.5v15h-3.5z"/><path d="M8 24v-5h3.5v5M14.2 24V14h3.5v10M20.5 24V9H24v15"/></symbol><symbol id="i-calendar" viewBox="0 0 32 32"><rect x="4" y="6.5" width="24" height="21" rx="3"/><path class="ac" d="M4 9.5a3 3 0 0 1 3-3h18a3 3 0 0 1 3 3v3H4z"/><path d="M4 12.5h24M10.5 3.5v6M21.5 3.5v6"/><path d="M10 18l2.2 2.2 4.3-4.4M20 17.5h3.5M20 22h3.5"/></symbol><symbol id="i-inbound" viewBox="0 0 32 32"><path d="M4 18v7a2.5 2.5 0 0 0 2.5 2.5h19A2.5 2.5 0 0 0 28 25v-7"/><path class="ac" d="M4 18h6l2 3.5h8l2-3.5h6v7a2.5 2.5 0 0 1-2.5 2.5h-19A2.5 2.5 0 0 1 4 25z"/><path d="M4 18h6l2 3.5h8l2-3.5h6M16 3.5v13M10.5 11 16 16.5 21.5 11"/></symbol><symbol id="i-outbound" viewBox="0 0 32 32"><path d="M4 18v7a2.5 2.5 0 0 0 2.5 2.5h19A2.5 2.5 0 0 0 28 25v-7"/><path class="ac" d="M4 18h6l2 3.5h8l2-3.5h6v7a2.5 2.5 0 0 1-2.5 2.5h-19A2.5 2.5 0 0 1 4 25z"/><path d="M4 18h6l2 3.5h8l2-3.5h6M16 16.5v-13M10.5 9 16 3.5 21.5 9"/></symbol><symbol id="i-count" viewBox="0 0 32 32"><rect x="6" y="4.5" width="20" height="24" rx="2.8"/><path class="ac" d="M11.5 3h9v4.5h-9z"/><path d="M11.5 3h9v4.5h-9zM10.5 13l1.8 1.8 3.2-3.3M10.5 20.5l1.8 1.8 3.2-3.3M18.5 13.5h3.5M18.5 21h3.5"/></symbol><symbol id="i-approve" viewBox="0 0 32 32"><path d="M16 3.5 26 7.5v8c0 6.4-4.3 10.6-10 13-5.7-2.4-10-6.6-10-13v-8z"/><path class="ac" d="M16 3.5 26 7.5v8c0 6.4-4.3 10.6-10 13z"/><path d="M11 16l3.6 3.6L21.5 12.7"/></symbol><symbol id="i-truck" viewBox="0 0 32 32"><path d="M3.5 8.5h15v13h-15z"/><path class="ac" d="M18.5 12.5h5.2l4.3 5v4h-9.5z"/><path d="M18.5 12.5h5.2l4.3 5v4h-9.5zM3.5 21.5h2M13 21.5h7"/><circle cx="9" cy="23" r="2.6" class="bg"/><circle cx="23" cy="23" r="2.6" class="bg"/></symbol><symbol id="i-kpi" viewBox="0 0 32 32"><path d="M4 27.5h24M4 4.5v23"/><path class="ac" d="M7 23l6-7 5 4 9-11v14.5H7z"/><path d="M7 23l6-7 5 4 9-11"/><path d="M21.5 9H27v5.5"/></symbol><symbol id="i-tagQr" viewBox="0 0 32 32"><path d="M4 6.5v8.3a2 2 0 0 0 .6 1.4l11.2 11.2a2 2 0 0 0 2.8 0l8.3-8.3a2 2 0 0 0 0-2.8L15.7 5.1a2 2 0 0 0-1.4-.6H6a2 2 0 0 0-2 2z"/><path class="ac" d="M15 13.5h3v3h-3zM19.5 18h3v3h-3zM15 18h2.5v2.5H15z"/><circle cx="9.5" cy="10" r="2"/></symbol><symbol id="i-link" viewBox="0 0 32 32"><path d="M13.5 18.5a5.5 5.5 0 0 0 7.8 0l4.4-4.4a5.5 5.5 0 0 0-7.8-7.8l-1.6 1.6"/><path d="M18.5 13.5a5.5 5.5 0 0 0-7.8 0l-4.4 4.4a5.5 5.5 0 0 0 7.8 7.8l1.6-1.6"/><path class="ac" d="M21.3 8.5a3 3 0 0 1 2.2 5l-2 2-4.2-4.2 2-2a3 3 0 0 1 2-.8z"/></symbol><symbol id="i-cart" viewBox="0 0 32 32"><path d="M3 5h3.5l3.2 14.5h14.6L27.5 9.5H8"/><path class="ac" d="M8.3 9.5h19.2l-3.2 10H10.5z"/><circle cx="12" cy="25.3" r="2" class="bg"/><circle cx="22" cy="25.3" r="2" class="bg"/><path d="M14 14.5h7"/></symbol><symbol id="i-receipt" viewBox="0 0 32 32"><path d="M7 3.5h18v25l-3-2-3 2-3-2-3 2-3-2-3 2z"/><path class="ac" d="M7 3.5h18v7H7z"/><path d="M11.5 8h9M11.5 14.5h9M11.5 19h5.5M19.5 19h1.5"/></symbol><symbol id="i-tent" viewBox="0 0 32 32"><path d="M16 4 3.5 27.5h25z"/><path class="ac" d="M16 4l-4.5 23.5h9z"/><path d="M16 4l-4.5 23.5M16 4l4.5 23.5M16 4V2M3.5 27.5h25"/><path d="M16 4V1.2l4.2 1.5L16 4.2z" class="ac2"/></symbol><symbol id="i-shield" viewBox="0 0 32 32"><path d="M16 3.5 26 7.5v8c0 6.4-4.3 10.6-10 13-5.7-2.4-10-6.6-10-13v-8z"/><path class="ac" d="M16 3.5v25c-5.7-2.4-10-6.6-10-13v-8z"/><circle cx="16" cy="14.5" r="3"/><path d="M16 17.5v4"/></symbol><symbol id="i-building" viewBox="0 0 32 32"><path d="M5 28V6.5A2.5 2.5 0 0 1 7.5 4h9A2.5 2.5 0 0 1 19 6.5V28M19 12.5h5.5A2.5 2.5 0 0 1 27 15v13M3 28h26"/><path class="ac" d="M19 12.5h5.5A2.5 2.5 0 0 1 27 15v13h-8z"/><path d="M9.5 9h5M9.5 14h5M9.5 19h5M11 28v-4h2v4"/></symbol><symbol id="i-call" viewBox="0 0 32 32"><path d="M8.6 4.5h3.2l2 5.2-2.6 1.8a14 14 0 0 0 7.3 7.3l1.8-2.6 5.2 2v3.2a2.6 2.6 0 0 1-2.8 2.6A20.5 20.5 0 0 1 6 7.3a2.6 2.6 0 0 1 2.6-2.8z"/><path class="ac" d="M8.6 4.5h3.2l2 5.2-2.6 1.8a14 14 0 0 0 3.6 4.8L6.7 9.5A20 20 0 0 1 6 7.3a2.6 2.6 0 0 1 2.6-2.8z"/><path d="M19.5 4.5a8 8 0 0 1 8 8M19.5 9a3.5 3.5 0 0 1 3.5 3.5"/></symbol><symbol id="i-chat" viewBox="0 0 32 32"><path d="M5 7.5A3.5 3.5 0 0 1 8.5 4h15A3.5 3.5 0 0 1 27 7.5v10a3.5 3.5 0 0 1-3.5 3.5H14l-6 5v-5h.5A3.5 3.5 0 0 1 5 17.5z"/><path class="ac" d="M8.5 6.5h15a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H8.5a1 1 0 0 1-1-1v-10a1 1 0 0 1 1-1z"/><path d="M11 12.5h.4M16 12.5h.4M21 12.5h.4"/></symbol><symbol id="i-mail" viewBox="0 0 32 32"><rect x="3.5" y="7" width="25" height="18" rx="3"/><path class="ac" d="M3.5 10l12.5 8 12.5-8V25H3.5z"/><path d="M4.5 9 16 17l11.5-8"/></symbol><symbol id="i-web" viewBox="0 0 32 32"><rect x="3.5" y="5" width="25" height="20" rx="3"/><path class="ac" d="M3.5 8a3 3 0 0 1 3-3h19a3 3 0 0 1 3 3v2.5h-25z"/><path d="M3.5 10.5h25M7 7.8h.4M10 7.8h.4M8 15h11M8 19.5h7"/><path d="M19.5 15.5l7 2.6-3 1.2-1.2 3z" class="ac2"/></symbol><symbol id="i-play" viewBox="0 0 32 32"><path d="M10 6.5v19l15-9.5z"/><path class="ac" d="M10 6.5v19l15-9.5z"/></symbol><symbol id="i-download" viewBox="0 0 32 32"><path d="M16 4v15M10 13.5l6 6 6-6M5 22v3.5A2.5 2.5 0 0 0 7.5 28h17a2.5 2.5 0 0 0 2.5-2.5V22"/></symbol></defs></svg>
+<div class="bar"><b>MYIB WMS · เอกสารนำเสนอ</b>
+  <button onclick="present()"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg> นำเสนอ<small>(← → / Esc)</small></button>
+  <button class="pri" onclick="window.print()"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg> บันทึกเป็น PDF</button></div>
+<div class="deck" id="deck">
+
+<!-- 1 COVER -->
+<div class="frame"><section class="slide cover">
+  <div class="cover-bg"></div>
+  <div style="position:absolute;left:120px;top:110px"><img src="logo.svg" style="height:70px;filter:brightness(0) invert(1)" alt="MYIB"></div>
+  <div style="position:absolute;left:120px;top:300px;width:900px">
+    <div class="eyebrow">WAREHOUSE MANAGEMENT SYSTEM</div>
+    <h1>MYIB<br><span class="acc">WMS</span></h1>
+    <p class="lead" style="margin-top:30px;font-size:52px;color:#fff;font-weight:800">รู้ทุกชิ้น ทุกที่ ทุกเวลา</p>
+    <div style="display:flex;gap:14px;margin-top:44px;flex-wrap:wrap"><span class="badge"><svg class="i" aria-hidden="true"><use href="#i-laptop"/></svg> เว็บ</span><span class="badge"><svg class="i" aria-hidden="true"><use href="#i-phone"/></svg> มือถือ</span><span class="badge"><svg class="i" aria-hidden="true"><use href="#i-lang"/></svg> ไทย / EN</span></div>
+  </div>
+  <div style="position:absolute;right:-60px;top:170px;width:1020px;transform:rotate(-3deg)">
+    <div class="win"><div class="tb"><i></i><i></i><i></i><em>myib.online · WMS</em></div><img src="img/dash.jpg" alt=""></div></div>
+  <div style="position:absolute;right:120px;bottom:70px"><div class="phone" style="width:250px"><div class="scr"><img src="img/m-home.jpg" alt=""></div></div></div>
+</section></div>
+
+<!-- 2 PROBLEMS -->
+<div class="frame"><section class="slide">
+  <div class="brand"><div class="lg"><img src="logo.svg" alt="MYIB"></div><span>ปัญหาก่อนใช้ระบบ</span></div>
+  <div style="position:absolute;left:96px;top:170px"><h2>คลังของคุณ<span class="acc">เจอแบบนี้ไหม?</span></h2></div>
+  <div class="grid" style="position:absolute;left:96px;right:96px;top:420px;grid-template-columns:repeat(3,1fr)">
+    <div class="card"><div class="ic r"><svg class="i" aria-hidden="true"><use href="#i-boxDiff"/></svg></div><b>สต๊อกไม่ตรง</b><small>ระบบกับของจริงไม่เท่ากัน</small></div>
+    <div class="card"><div class="ic r"><svg class="i" aria-hidden="true"><use href="#i-shelfSearch"/></svg></div><b>หาของไม่เจอ</b><small>ไม่รู้อยู่ชั้นไหน ล็อตไหน</small></div>
+    <div class="card"><div class="ic r"><svg class="i" aria-hidden="true"><use href="#i-alarm"/></svg></div><b>ของหมดไม่รู้ตัว</b><small>รู้ตอนลูกค้าสั่งแล้ว</small></div>
+    <div class="card"><div class="ic r"><svg class="i" aria-hidden="true"><use href="#i-keyTypo"/></svg></div><b>คีย์ซ้ำ ผิดบ่อย</b><small>จดกระดาษ แล้วพิมพ์ Excel</small></div>
+    <div class="card"><div class="ic r"><svg class="i" aria-hidden="true"><use href="#i-traceGone"/></svg></div><b>ย้อนดูไม่ได้</b><small>ของหาย ไม่รู้ใครทำ</small></div>
+    <div class="card"><div class="ic r"><svg class="i" aria-hidden="true"><use href="#i-soloSign"/></svg></div><b>ไม่มีคนตรวจ</b><small>ปรับยอดได้คนเดียว</small></div>
+  </div>
+  <div class="pn">02</div>
+</section></div>
+
+<!-- 3 SOLUTION -->
+<div class="frame"><section class="slide">
+  <div class="brand"><div class="lg"><img src="logo.svg" alt="MYIB"></div><span>MYIB WMS แก้ได้</span></div>
+  <div style="position:absolute;left:96px;top:160px"><h2>เปลี่ยนเป็น<span class="acc">คลังอัจฉริยะ</span></h2></div>
+  <div style="position:absolute;left:96px;right:96px;top:360px">
+    <div class="pair"><div class="p">สต๊อกไม่ตรง</div><div class="ar">→</div><div class="s">อัปเดต<em>เรียลไทม์</em> ทุกการสแกน</div></div>
+    <div class="pair"><div class="p">หาของไม่เจอ</div><div class="ar">→</div><div class="s">ระบบ<em>บอกตำแหน่ง</em> + FIFO</div></div>
+    <div class="pair"><div class="p">ของหมดไม่รู้ตัว</div><div class="ar">→</div><div class="s"><em>เตือนอัตโนมัติ</em> + สั่งซื้อ 1 คลิก</div></div>
+    <div class="pair"><div class="p">คีย์ซ้ำ ผิดบ่อย</div><div class="ar">→</div><div class="s"><em>สแกนบาร์โค้ด</em> จากมือถือ</div></div>
+    <div class="pair"><div class="p">ย้อนดูไม่ได้ / ไม่มีคนตรวจ</div><div class="ar">→</div><div class="s">บันทึกทุกขั้น + <em>อนุมัติ 2 คน</em></div></div>
+  </div>
+  <div class="pn">03</div>
+</section></div>
+
+<!-- 4 FUNCTION MAP -->
+<div class="frame"><section class="slide">
+  <div class="brand"><div class="lg"><img src="logo.svg" alt="MYIB"></div><span>ฟังก์ชันของระบบ</span></div>
+  <div style="position:absolute;left:96px;top:160px"><h2>ครบใน<span class="acc">ระบบเดียว</span></h2></div>
+  <div class="grid" style="position:absolute;left:96px;right:96px;top:340px;grid-template-columns:repeat(4,1fr);gap:22px">
+    <div class="card"><div class="ic o"><svg class="i" aria-hidden="true"><use href="#i-dashboard"/></svg></div><b>แดชบอร์ด</b></div>
+    <div class="card"><div class="ic o"><svg class="i" aria-hidden="true"><use href="#i-calendar"/></svg></div><b>วางแผนงาน</b></div>
+    <div class="card"><div class="ic g"><svg class="i" aria-hidden="true"><use href="#i-inbound"/></svg></div><b>รับเข้า</b></div>
+    <div class="card"><div class="ic g"><svg class="i" aria-hidden="true"><use href="#i-outbound"/></svg></div><b>หยิบ / จ่าย</b></div>
+    <div class="card"><div class="ic b"><svg class="i" aria-hidden="true"><use href="#i-box"/></svg></div><b>สต๊อก & ล็อต</b></div>
+    <div class="card"><div class="ic b"><svg class="i" aria-hidden="true"><use href="#i-count"/></svg></div><b>นับสต๊อก</b></div>
+    <div class="card"><div class="ic p"><svg class="i" aria-hidden="true"><use href="#i-approve"/></svg></div><b>อนุมัติ ISO</b></div>
+    <div class="card"><div class="ic p"><svg class="i" aria-hidden="true"><use href="#i-truck"/></svg></div><b>นัดรถเข้า-ออก</b></div>
+    <div class="card"><div class="ic o"><svg class="i" aria-hidden="true"><use href="#i-kpi"/></svg></div><b>KPI พนักงาน</b></div>
+    <div class="card"><div class="ic g"><svg class="i" aria-hidden="true"><use href="#i-tagQr"/></svg></div><b>ฉลาก QR</b></div>
+    <div class="card"><div class="ic b"><svg class="i" aria-hidden="true"><use href="#i-phone"/></svg></div><b>แอปมือถือ</b></div>
+    <div class="card"><div class="ic p"><svg class="i" aria-hidden="true"><use href="#i-link"/></svg></div><b>ERP / บัญชี</b></div>
+  </div>
+  <div class="pn">04</div>
+</section></div>
+
+<!-- 5 DASHBOARD -->
+<div class="frame"><section class="slide">
+  <div class="brand"><div class="lg"><img src="logo.svg" alt="MYIB"></div><span>แดชบอร์ด</span></div>
+  <div class="feat"><div class="tx"><div class="eyebrow">01 · DASHBOARD</div><h2>เห็นทั้งคลัง<br><span class="acc">ในหน้าเดียว</span></h2><p class="lead">ยอดสต๊อก งานวันนี้ ของใกล้หมด</p>
+    <div class="chips"><span class="chip"><i>●</i>เรียลไทม์</span><span class="chip"><i>●</i>ค้นหาสินค้าทันที</span></div></div>
+    <div class="stage"><div class="stage-bg"></div><div class="win w2"><div class="tb"><i></i><i></i><i></i><em>แดชบอร์ด</em></div><div class="fc" style="aspect-ratio:1.7405"><img src="img/dash.jpg" alt="" style="width:124.224%;left:-24.224%;top:0.000%"></div></div><div class="zoom bl" style="width:44%"><div class="zl"><i></i>สุขภาพสต๊อกแบบเรียลไทม์</div><div class="fc" style="aspect-ratio:1.9200"><img src="img/dash.jpg" alt="" style="width:416.667%;left:-89.583%;top:-97.500%"></div></div></div></div>
+  <div class="pn">05</div>
+</section></div>
+
+<!-- 6 PLANNING -->
+<div class="frame"><section class="slide">
+  <div class="brand"><div class="lg"><img src="logo.svg" alt="MYIB"></div><span>วางแผนงาน</span></div>
+  <div class="feat"><div class="tx"><div class="eyebrow">02 · SCHEDULE</div><h2>วางแผน<br><span class="acc">รับ–ส่งของ</span></h2><p class="lead">PO · SO · Picking บนไทม์ไลน์</p>
+    <div class="chips"><span class="chip"><i>●</i>Gantt</span><span class="chip"><i>●</i>ติดตามความคืบหน้า</span></div></div>
+    <div class="stage"><div class="stage-bg"></div><div class="win w2"><div class="tb"><i></i><i></i><i></i><em>ตารางงาน</em></div><div class="fc" style="aspect-ratio:1.7405"><img src="img/gantt.jpg" alt="" style="width:124.224%;left:-24.224%;top:0.000%"></div></div><div class="zoom bl" style="width:46%"><div class="zl"><i></i>ทุกงานบนไทม์ไลน์เดียว</div><div class="fc" style="aspect-ratio:1.8909"><img src="img/gantt.jpg" alt="" style="width:384.615%;left:-84.615%;top:-127.273%"></div></div></div></div>
+  <div class="pn">06</div>
+</section></div>
+
+<!-- 7 PO + APPROVAL -->
+<div class="frame"><section class="slide">
+  <div class="brand"><div class="lg"><img src="logo.svg" alt="MYIB"></div><span>ใบสั่งซื้อ & อนุมัติ</span></div>
+  <div class="feat"><div class="tx"><div class="eyebrow">03 · PURCHASE ORDER</div><h2>PO ต้อง<br><span class="acc">อนุมัติก่อน</span></h2><p class="lead">ผู้สร้างอนุมัติเองไม่ได้ ตาม ISO</p>
+    <div class="chips"><span class="chip"><i>●</i>รับทีละรายการ</span><span class="chip"><i>●</i>ออก GR</span></div></div>
+    <div class="stage"><div class="stage-bg"></div><div class="win w2"><div class="tb"><i></i><i></i><i></i><em>ใบสั่งซื้อ</em></div><div class="fc" style="aspect-ratio:1.7111"><img src="img/po.jpg" alt="" style="width:129.870%;left:-27.273%;top:-11.111%"></div></div><div class="zoom bl" style="width:46%"><div class="zl"><i></i>ต้องอนุมัติก่อนรับของ</div><div class="fc" style="aspect-ratio:4.4444"><img src="img/po.jpg" alt="" style="width:400.000%;left:-288.000%;top:-211.111%"></div></div></div></div>
+  <div class="pn">07</div>
+</section></div>
+
+<!-- 8 INBOUND -->
+<div class="frame"><section class="slide">
+  <div class="brand"><div class="lg"><img src="logo.svg" alt="MYIB"></div><span>รับสินค้าเข้า</span></div>
+  <div class="feat"><div class="tx"><div class="eyebrow">04 · INBOUND</div><h2>สแกนแล้ว<br><span class="acc">รับเข้าทันที</span></h2><p class="lead">ระบบแนะนำตำแหน่งเก็บให้</p>
+    <div class="chips"><span class="chip"><i>●</i>บาร์โค้ด / QR</span><span class="chip"><i>●</i>ล็อต & วันหมดอายุ</span></div></div>
+    <div class="stage"><div class="stage-bg"></div><div class="win w2"><div class="tb"><i></i><i></i><i></i><em>รับ / เพิ่ม</em></div><div class="fc" style="aspect-ratio:1.7405"><img src="img/inbound.jpg" alt="" style="width:124.224%;left:-24.224%;top:0.000%"></div></div><div class="zoom bl" style="width:56%"><div class="zl"><i></i>ดูยอดหลังรับ + ยืนยันปุ่มเดียว</div><div class="fc" style="aspect-ratio:5.0462"><img src="img/inbound.jpg" alt="" style="width:243.902%;left:-134.146%;top:-476.923%"></div></div></div></div>
+  <div class="pn">08</div>
+</section></div>
+
+<!-- 9 PICK -->
+<div class="frame"><section class="slide">
+  <div class="brand"><div class="lg"><img src="logo.svg" alt="MYIB"></div><span>หยิบ / จ่าย</span></div>
+  <div class="feat"><div class="tx"><div class="eyebrow">05 · OUTBOUND</div><h2>หยิบถูก<br><span class="acc">ล็อตถูก</span></h2><p class="lead">ของใกล้หมดอายุออกก่อน อัตโนมัติ</p>
+    <div class="chips"><span class="chip"><i>●</i>FIFO / FEFO</span><span class="chip"><i>●</i>กันจ่ายเกิน</span></div></div>
+    <div class="stage"><div class="stage-bg"></div><div class="win w2"><div class="tb"><i></i><i></i><i></i><em>หยิบ / จ่าย</em></div><div class="fc" style="aspect-ratio:1.7405"><img src="img/pick.jpg" alt="" style="width:124.224%;left:-24.224%;top:0.000%"></div></div><div class="zoom bl" style="width:56%"><div class="zl"><i></i>ตรวจยอดก่อนตัดทุกครั้ง</div><div class="fc" style="aspect-ratio:5.6000"><img src="img/pick.jpg" alt="" style="width:238.095%;left:-128.571%;top:-458.333%"></div></div></div></div>
+  <div class="pn">09</div>
+</section></div>
+
+<!-- 10 STOCK -->
+<div class="frame"><section class="slide">
+  <div class="brand"><div class="lg"><img src="logo.svg" alt="MYIB"></div><span>ยอดคงเหลือ</span></div>
+  <div class="feat"><div class="tx"><div class="eyebrow">06 · STOCK</div><h2>รู้ว่าอยู่<br><span class="acc">ตรงไหน</span></h2><p class="lead">แยกตามตำแหน่ง ล็อต วันหมดอายุ</p>
+    <div class="chips"><span class="chip"><i>●</i>2 หน่วยนับ</span><span class="chip"><i>●</i>Excel 1 คลิก</span></div></div>
+    <div class="stage"><div class="stage-bg"></div><div class="win w2"><div class="tb"><i></i><i></i><i></i><em>ยอดคงเหลือ</em></div><div class="fc" style="aspect-ratio:1.7405"><img src="img/stock.jpg" alt="" style="width:124.224%;left:-24.224%;top:0.000%"></div></div><div class="zoom bl" style="width:48%"><div class="zl"><i></i>ยอดแยกตามตำแหน่งและล็อต</div><div class="fc" style="aspect-ratio:2.1818"><img src="img/stock.jpg" alt="" style="width:333.333%;left:-73.333%;top:-200.000%"></div></div></div></div>
+  <div class="pn">10</div>
+</section></div>
+
+<!-- 11 CYCLE COUNT -->
+<div class="frame"><section class="slide">
+  <div class="brand"><div class="lg"><img src="logo.svg" alt="MYIB"></div><span>นับสต๊อก</span></div>
+  <div class="feat"><div class="tx"><div class="eyebrow">07 · CYCLE COUNT</div><h2>นับรอบ<br><span class="acc">ไม่ต้องปิดคลัง</span></h2><p class="lead">ของสำคัญนับบ่อย ระบบจัดรอบให้</p>
+    <div class="chips"><span class="chip"><i>●</i>ABC อัตโนมัติ</span><span class="chip"><i>●</i>นับด้วยมือถือ</span></div></div>
+    <div class="stage"><div class="stage-bg"></div><div class="win w2"><div class="tb"><i></i><i></i><i></i><em>แผนนับรอบ</em></div><div class="fc" style="aspect-ratio:1.7405"><img src="img/cycle.jpg" alt="" style="width:124.224%;left:-24.224%;top:0.000%"></div></div><div class="zoom bl" style="width:54%"><div class="zl"><i></i>ถึงรอบนับ · กำลังนับ</div><div class="fc" style="aspect-ratio:5.3333"><img src="img/cycle.jpg" alt="" style="width:250.000%;left:-52.500%;top:-141.667%"></div></div></div></div>
+  <div class="pn">11</div>
+</section></div>
+
+<!-- 12 APPROVALS -->
+<div class="frame"><section class="slide">
+  <div class="brand"><div class="lg"><img src="logo.svg" alt="MYIB"></div><span>อนุมัติเอกสาร</span></div>
+  <div class="feat"><div class="tx"><div class="eyebrow">08 · ISO APPROVAL</div><h2>ตรวจ<br><span class="acc">2 คนเสมอ</span></h2><p class="lead">ปรับยอด ลบ นับ ต้องมีผู้อนุมัติ</p>
+    <div class="chips"><span class="chip"><i>●</i>กล่องรออนุมัติ</span><span class="chip"><i>●</i>บันทึกเหตุผล</span></div></div>
+    <div class="stage"><div class="stage-bg"></div><div class="win w2"><div class="tb"><i></i><i></i><i></i><em>รออนุมัติ</em></div><div class="fc" style="aspect-ratio:1.7405"><img src="img/approvals.jpg" alt="" style="width:124.224%;left:-24.224%;top:0.000%"></div></div><div class="zoom bl" style="width:52%"><div class="zl"><i></i>รอ Manager คนที่สองอนุมัติ</div><div class="fc" style="aspect-ratio:2.5600"><img src="img/approvals.jpg" alt="" style="width:312.500%;left:-68.750%;top:-195.000%"></div></div></div></div>
+  <div class="pn">12</div>
+</section></div>
+
+<!-- 13 DOCK -->
+<div class="frame"><section class="slide">
+  <div class="brand"><div class="lg"><img src="logo.svg" alt="MYIB"></div><span>นัดรถเข้า-ออก</span></div>
+  <div class="feat"><div class="tx"><div class="eyebrow">09 · DOCK</div><h2>รถไม่ต้อง<br><span class="acc">รอคิว</span></h2><p class="lead">จองช่องจอด รู้ทันทีคันไหนสาย</p>
+    <div class="chips"><span class="chip"><i>●</i>เตือนจองซ้อน</span><span class="chip"><i>●</i>สถานะสด</span></div></div>
+    <div class="stage"><div class="stage-bg"></div><div class="win w2"><div class="tb"><i></i><i></i><i></i><em>นัดรถเข้า-ออก</em></div><div class="fc" style="aspect-ratio:1.7405"><img src="img/dock.jpg" alt="" style="width:124.224%;left:-24.224%;top:0.000%"></div></div><div class="zoom bl" style="width:56%"><div class="zl"><i></i>รถล่าช้า · อยู่ที่ช่องจอด</div><div class="fc" style="aspect-ratio:5.2000"><img src="img/dock.jpg" alt="" style="width:256.410%;left:-100.000%;top:-141.667%"></div></div></div></div>
+  <div class="pn">13</div>
+</section></div>
+
+<!-- 14 KPI -->
+<div class="frame"><section class="slide">
+  <div class="brand"><div class="lg"><img src="logo.svg" alt="MYIB"></div><span>ผลงาน & KPI</span></div>
+  <div class="feat"><div class="tx"><div class="eyebrow">10 · KPI</div><h2>วัดผลได้<br><span class="acc">ทุกคน</span></h2><p class="lead">งานต่อคน ความแม่นยำ รถตรงเวลา</p>
+    <div class="chips"><span class="chip"><i>●</i>7 / 30 / 90 วัน</span><span class="chip"><i>●</i>ส่งออก CSV</span></div></div>
+    <div class="stage"><div class="stage-bg"></div><div class="win w2"><div class="tb"><i></i><i></i><i></i><em>ผลงานพนักงาน & KPI</em></div><div class="fc" style="aspect-ratio:1.7405"><img src="img/kpi.jpg" alt="" style="width:124.224%;left:-24.224%;top:0.000%"></div></div><div class="zoom bl" style="width:56%"><div class="zl"><i></i>ความแม่นยำ · รถตรงเวลา</div><div class="fc" style="aspect-ratio:4.5714"><img src="img/kpi.jpg" alt="" style="width:250.000%;left:-52.500%;top:-164.286%"></div></div></div></div>
+  <div class="pn">14</div>
+</section></div>
+
+<!-- 15 LOW STOCK / REORDER -->
+<div class="frame"><section class="slide">
+  <div class="brand"><div class="lg"><img src="logo.svg" alt="MYIB"></div><span>เติมสต๊อก</span></div>
+  <div class="feat"><div class="tx"><div class="eyebrow">11 · REORDER</div><h2>ของใกล้หมด<br><span class="acc">สั่งใน 1 คลิก</span></h2><p class="lead">แยก PO ตามผู้ขายให้อัตโนมัติ</p>
+    <div class="chips"><span class="chip"><i>●</i>Min / Max</span><span class="chip"><i>●</i>วิเคราะห์ ABC</span></div></div>
+    <div class="stage"><div class="stage-bg"></div><div class="win w2"><div class="tb"><i></i><i></i><i></i><em>สินค้าใกล้หมด</em></div><div class="fc" style="aspect-ratio:1.7405"><img src="img/lowstock.jpg" alt="" style="width:124.224%;left:-24.224%;top:0.000%"></div></div><div class="zoom bl" style="width:40%"><div class="zl"><i></i>สร้างใบสั่งซื้อได้ทันที</div><div class="fc" style="aspect-ratio:3.9111"><img src="img/lowstock.jpg" alt="" style="width:454.545%;left:-336.364%;top:-777.778%"></div></div></div></div>
+  <div class="pn">15</div>
+</section></div>
+
+<!-- 16 LABELS -->
+<div class="frame"><section class="slide">
+  <div class="brand"><div class="lg"><img src="logo.svg" alt="MYIB"></div><span>ฉลาก QR</span></div>
+  <div class="feat"><div class="tx"><div class="eyebrow">12 · LABEL</div><h2>พิมพ์ฉลาก<br><span class="acc">ขนาดจริง</span></h2><p class="lead">ออกแบบเอง ลากวางได้</p>
+    <div class="chips"><span class="chip"><i>●</i>QR / บาร์โค้ด</span><span class="chip"><i>●</i>รีพรินท์เลขเดิม</span></div></div>
+    <div class="stage"><div class="stage-bg"></div><div class="win w2"><div class="tb"><i></i><i></i><i></i><em>พิมพ์ฉลาก</em></div><div class="fc" style="aspect-ratio:1.7405"><img src="img/label.jpg" alt="" style="width:124.224%;left:-24.224%;top:0.000%"></div></div><div class="zoom bl" style="width:34%"><div class="zl"><i></i>ฉลาก QR พร้อมพิมพ์</div><div class="fc" style="aspect-ratio:1.6941"><img src="img/label.jpg" alt="" style="width:555.556%;left:-400.000%;top:-188.235%"></div></div></div></div>
+  <div class="pn">16</div>
+</section></div>
+
+<!-- 17 MOBILE -->
+<div class="frame"><section class="slide"><div class="phones-bg"></div>
+  <div class="brand"><div class="lg"><img src="logo.svg" alt="MYIB"></div><span>แอปมือถือ</span></div>
+  <div style="position:absolute;left:96px;top:190px;width:600px"><div class="eyebrow">13 · MOBILE</div><h2>ทำงาน<br><span class="acc">ที่หน้างาน</span></h2><p class="lead" style="margin-top:22px">สแกน รับ จ่าย ย้าย นับ — จากมือถือ</p>
+    <div class="chips"><span class="chip"><i>●</i>กล้องเป็นสแกนเนอร์</span><span class="chip"><i>●</i>ติดตั้งเป็นแอป</span></div></div>
+  <div style="position:absolute;right:90px;top:150px;display:flex;gap:40px;align-items:flex-start">
+    <div class="phone"><div class="scr"><img src="img/m-home.jpg" alt=""></div></div>
+    <div class="phone" style="margin-top:70px"><div class="scr"><img src="img/m-scan.jpg" alt=""></div></div>
+    <div class="phone"><div class="scr"><img src="img/m-receive.jpg" alt=""></div></div></div>
+  <div class="pn">17</div>
+</section></div>
+
+<!-- 18 BUILT-IN TRAINING -->
+<div class="frame"><section class="slide">
+  <div class="brand"><div class="lg"><img src="logo.svg" alt="MYIB"></div><span>สอนใช้งานในตัว</span></div>
+  <div style="position:absolute;left:96px;top:190px;width:560px"><div class="eyebrow">14 · EASY TO LEARN</div><h2>กด <span class="acc">?</span><br>ดูวิธีใช้</h2><p class="lead" style="margin-top:22px">สาธิตเสมือนจริงทุกหน้า + ปุ่มถัดไปกระพริบนำทาง</p></div>
+  <div style="position:absolute;left:700px;top:170px;width:600px;transform:rotate(-2deg);z-index:2"><img src="img/help-pan.jpg" alt="" style="width:100%;border-radius:28px;box-shadow:0 30px 70px rgba(60,30,10,.28)"></div>
+  <div style="position:absolute;right:70px;top:360px;width:820px"><div class="win"><div class="tb"><i></i><i></i><i></i><em>โหมดสาธิต</em></div><img src="img/demo.jpg" alt=""></div></div>
+  <div class="pn">18</div>
+</section></div>
+
+<!-- 19 CONNECT -->
+<div class="frame"><section class="slide">
+  <div class="brand"><div class="lg"><img src="logo.svg" alt="MYIB"></div><span>เชื่อมต่อ & ขยาย</span></div>
+  <div style="position:absolute;left:96px;top:160px"><h2>โตไปกับ<span class="acc">ธุรกิจคุณ</span></h2></div>
+  <div class="grid" style="position:absolute;left:96px;right:96px;top:390px;grid-template-columns:repeat(3,1fr)">
+    <div class="card"><div class="ic b"><svg class="i" aria-hidden="true"><use href="#i-link"/></svg></div><b>ERP / API</b><small>นำเข้า–ส่งออก Excel, CSV</small></div>
+    <div class="card"><div class="ic o"><svg class="i" aria-hidden="true"><use href="#i-cart"/></svg></div><b>Shopee · Lazada</b><small>ดึงออเดอร์อัตโนมัติ</small></div>
+    <div class="card"><div class="ic g"><svg class="i" aria-hidden="true"><use href="#i-receipt"/></svg></div><b>เอกสารบัญชี</b><small>ใบเสนอราคา อินวอยซ์ GR</small></div>
+    <div class="card"><div class="ic p"><svg class="i" aria-hidden="true"><use href="#i-tent"/></svg></div><b>งานเช่า & อีเวนท์</b><small>เบิก ส่ง รับคืน</small></div>
+    <div class="card"><div class="ic r"><svg class="i" aria-hidden="true"><use href="#i-shield"/></svg></div><b>ISO & Audit Log</b><small>ใครแก้อะไร เมื่อไหร่</small></div>
+    <div class="card"><div class="ic b"><svg class="i" aria-hidden="true"><use href="#i-building"/></svg></div><b>หลายบริษัท หลายคลัง</b><small>แยกข้อมูล แยกสิทธิ์</small></div>
+  </div>
+  <div class="pn">19</div>
+</section></div>
+
+<!-- 20 CLOSING -->
+<div class="frame"><section class="slide cover">
+  <div class="cover-bg"></div>
+  <div style="position:absolute;left:0;right:0;top:190px;text-align:center">
+    <img src="logo.svg" style="height:90px;filter:brightness(0) invert(1)" alt="MYIB">
+    <h1 style="font-size:130px;margin-top:50px">พร้อมเริ่ม<span class="acc">วันนี้</span></h1>
+    <p class="lead" style="margin-top:26px;font-size:46px">เว็บ + มือถือ · นัดสาธิตระบบได้เลย</p>
+    <div style="margin-top:56px;display:flex;justify-content:center;gap:22px;flex-wrap:wrap">
+      <span class="badge" style="font-size:34px;padding:18px 36px"><svg class="i" aria-hidden="true"><use href="#i-call"/></svg> 081-012-6064</span>
+      <span class="badge" style="font-size:34px;padding:18px 36px"><svg class="i" aria-hidden="true"><use href="#i-chat"/></svg> LINE: myib.online</span>
+    </div>
+    <div style="margin-top:22px;display:flex;justify-content:center;gap:22px;flex-wrap:wrap">
+      <span class="badge" style="font-size:34px;padding:18px 36px"><svg class="i" aria-hidden="true"><use href="#i-mail"/></svg> sales.myib@gmail.com</span>
+      <span class="badge" style="font-size:34px;padding:18px 36px"><svg class="i" aria-hidden="true"><use href="#i-web"/></svg> myib.online</span>
+    </div>
+  </div>
+  <div class="pn" style="color:#6E6762">20</div>
+</section></div>
+
+</div>
+<script>
+/* scale the 1920×1080 slides to the window */
+function fit(){ document.querySelectorAll(".frame").forEach(f=>{ const s=f.querySelector(".slide"); s.style.transform="scale("+(f.clientWidth/1920)+")"; }); }
+addEventListener("resize",fit); addEventListener("load",fit); fit();
+addEventListener("beforeprint",()=>document.querySelectorAll(".slide").forEach(s=>s.style.transform="none"));
+addEventListener("afterprint",fit);
+/* presenting mode */
+let cur=0; const frames=[...document.querySelectorAll(".frame")];
+function showAt(i){ cur=Math.max(0,Math.min(frames.length-1,i)); frames.forEach((f,j)=>f.classList.toggle("cur",j===cur)); requestAnimationFrame(fit); }
+function present(){ document.body.classList.add("show"); showAt(0); try{ document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen(); }catch(e){} }
+function endShow(){ document.body.classList.remove("show"); frames.forEach(f=>f.classList.remove("cur")); requestAnimationFrame(fit); }
+addEventListener("keydown",e=>{ if(!document.body.classList.contains("show")) return;
+  if(["ArrowRight","PageDown"," ","Enter"].includes(e.key)){ e.preventDefault(); showAt(cur+1); }
+  else if(["ArrowLeft","PageUp","Backspace"].includes(e.key)){ e.preventDefault(); showAt(cur-1); }
+  else if(e.key==="Escape") endShow(); });
+document.addEventListener("fullscreenchange",()=>{ if(!document.fullscreenElement) endShow(); });
+addEventListener("click",e=>{ if(document.body.classList.contains("show")) showAt(cur+(e.clientX>innerWidth/3?1:-1)); });
+</script>
+</body>
+</html>
