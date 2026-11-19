@@ -1,0 +1,3 @@
+# Real server config with secrets — keep it on the server only.
+# Copy config_supabase.sample.php to config_supabase.php and fill it in.
+config_supabase.php
