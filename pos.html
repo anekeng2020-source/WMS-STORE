@@ -1,4 +1,5 @@
 <!DOCTYPE html><html lang="th"><head>
+<script>try{if(localStorage.getItem("_wms_theme")==="dark")document.documentElement.setAttribute("data-theme","dark")}catch(e){}</script>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
@@ -27,7 +28,9 @@
 </script>
 <script>window.PWA_INSTALL={name:"myWMS POS",icon:"icon-192.png",lang:"th"};</script>
 <script src="install.js"></script>
-<style>:root{--pwa-accent:#ff8f00;--pwa-soft:#ff8f001f}</style>
+<style>:root{--pwa-accent:#ff8f00;--pwa-soft:#ff8f001f}
+.xi{width:1.1em;height:1.1em;vertical-align:-.18em;margin-right:.35em;flex:0 0 auto;display:inline-block}
+</style>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>mywms</title>
 <link rel="icon" type="image/svg+xml" href="images/logo.svg">
@@ -627,7 +630,7 @@ window.EntryLoader=(function(){
       <button class="av" id="uAv" onclick="toggleAcctMenu(event)">U</button>
       <div class="acct-menu hidden" id="acctMenu">
         <div class="acct-info"><b id="uName">User</b><span class="muted" id="uRole">Cashier</span></div>
-        <button class="btn ghost block" style="padding:8px 12px;margin-bottom:8px" data-pwa-install>⬇ ติดตั้งแอป · Install app</button>
+        <button class="btn ghost block" style="padding:8px 12px;margin-bottom:8px" data-pwa-install><svg class="xi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14"/></svg>ติดตั้งแอป · Install app</button>
         <button class="btn ghost block" style="padding:8px 12px;margin-bottom:8px" onclick="openPinSetupModal()">ตั้ง/เปลี่ยน PIN · Set/Change PIN</button>
         <button class="btn ghost block" style="padding:8px 12px" onclick="logout()" id="btnLogout">ออก</button>
       </div>
@@ -654,7 +657,7 @@ window.EntryLoader=(function(){
 
 <script>
 /* ============================ CONFIG (shared with WMS) ============================ */
-const CONFIG={ USE_BACKEND:true, API_BASE:"https://myib.online/mywms/api_supabase.php", API_KEY:"smywms", DB_KEY:"wms_db_v3", BRANCH:"MAIN", AUTH_KEY:"pos_auth_token" };
+const CONFIG={ USE_BACKEND:true, API_BASE:((/^https?:$/.test(location.protocol)&&!/^(localhost|127.0.0.1|[::1])$/.test(location.hostname))?location.origin+location.pathname.replace(/[^/]*$/,"")+"api_supabase.php":"https://myib.online/mywms/api_supabase.php"),   /* the api_supabase.php next to this page */ API_KEY:"smywms", DB_KEY:"wms_db_v3", BRANCH:"MAIN", AUTH_KEY:"pos_auth_token" };
 /* server-side authentication: token per tab (sessionStorage) */
 const Auth={
   get token(){ try{ return sessionStorage.getItem(CONFIG.AUTH_KEY)||''; }catch(e){ return ''; } },
@@ -733,20 +736,39 @@ function billRef(pfx){ const d=new Date(), p=n=>String(n).padStart(2,'0');
 function whoName(){ return (session.user&&(session.user.fullName||session.user.username))||''; }
 function isNG(loc){ const l=(DB.locationMaster||[]).find(x=>x.code===loc); if(l&&(l.warehouse==='NG'||/^NG/i.test(l.warehouse||'')))return true; return /^NG/i.test(loc||''); }
 function itemByCode(code){ return (DB.itemMaster||[]).find(i=>i.code===code)||null; }
+/* base-unit quantity of a cart / bill line */
+function bq(l){ return (parseInt(l&&l.qty,10)||0)*Math.max(1,parseInt(l&&l.mult,10)||1); }
+/* switch a cart line between the base unit and the item's package */
+function lineUnit(list,i,pack){ const l=list[i]; if(!l) return; const it=itemByCode(l.code)||{}, per=parseInt(it.qtyPackage,10)||0;
+  if(pack&&(!it.unitPackage||per<=1)) return;
+  const m=pack?per:1; if((l.mult||1)===m) return;
+  l.mult=m; l.unit=pack?it.unitPackage:(it.unit||''); if(list===CART&&!l.priceEdited){ l.price=r2(priceOf(it)*m); l.disc=0; } }
+function unitBtns(list,i){ const l=list[i], it=itemByCode(l&&l.code)||{}, per=parseInt(it.qtyPackage,10)||0; if(!l||!it.unitPackage||per<=1) return '';
+  const fn=list===CART?'cUnit':'wdUnit', on=(l.mult||1)>1;
+  return '<div style="display:flex;gap:6px;justify-content:center;margin:0 0 12px">'
+    +'<button class="btn '+(on?'ghost':'primary')+'" onclick="'+fn+'('+i+',0)">'+esc(it.unit||T('ชิ้น','pcs'))+'</button>'
+    +'<button class="btn '+(on?'primary':'ghost')+'" onclick="'+fn+'('+i+',1)">'+esc(it.unitPackage)+' (× '+per+')</button></div>'; }
+/* withdraw cart row: the same two units as small buttons */
+function wdUnitMini(i){ const l=WD_CART[i], it=itemByCode(l&&l.code)||{}, per=parseInt(it.qtyPackage,10)||0; if(!l||!it.unitPackage||per<=1) return '';
+  const on=(l.mult||1)>1;
+  return '<button class="mini"'+(on?'':' style="background:var(--orange);color:#fff"')+' onclick="wdUnit('+i+',0)">'+esc(it.unit||T('ชิ้น','pcs'))+'</button>'
+    +'<button class="mini"'+(on?' style="background:var(--orange);color:#fff"':'')+' onclick="wdUnit('+i+',1)">'+esc(it.unitPackage)+' ×'+per+'</button>'; }
+function cUnit(i,pack){ lineUnit(CART,i,pack); closeModal(); refreshCart(); if(window.p3Line) p3Line(i); }
+function wdUnit(i,pack){ lineUnit(WD_CART,i,pack); wdRefreshCart(); }
 function priceOf(it){ if(!it)return 0; return parseFloat(it.price!=null?it.price:(it.sell!=null?it.sell:it.cost))||0; }
 function costOf(it){ if(!it)return 0; return parseFloat(it.cost)||0; }
 function stockTotal(code){ return (DB.stock||[]).filter(x=>x.code===code&&!isNG(x.loc)).reduce((a,x)=>a+(parseInt(x.qty,10)||0),0); }
 function stockAt(code,loc){ return (DB.stock||[]).filter(x=>x.code===code&&x.loc===loc).reduce((a,x)=>a+(parseInt(x.qty,10)||0),0); }
 function locList(){ return (DB.locationMaster||[]).map(l=>l.code); }
-function adjustStockAt(code,loc,delta){ let row=(DB.stock||[]).find(x=>x.code===code&&x.loc===loc); if(row){ row.qty=(parseInt(row.qty,10)||0)+delta; } else if(delta>0){ DB.stock.push({code,loc,qty:delta}); } }
 function issueFIFO(code,loc,qty){ // deduct qty at loc oldest-first by lotNo/exp
   let rows=(DB.stock||[]).filter(x=>x.code===code&&x.loc===loc&&(parseInt(x.qty,10)||0)>0);
-  rows.sort((a,b)=>{ const ax=a.exp||'￿', bx=b.exp||'￿'; if(ax!==bx) return ax<bx?-1:1;   // nearest EXP first, no EXP last (same as the web app)
+  rows.sort((a,b)=>{ if(!a.hu!==!b.hu) return a.hu?1:-1;                 // loose stock before stock in a pallet / tote
+    const ax=a.exp||'￿', bx=b.exp||'￿'; if(ax!==bx) return ax<bx?-1:1;   // nearest EXP first, no EXP last (same as the web app)
     return String(a.lotNo||'').localeCompare(String(b.lotNo||''),undefined,{numeric:true}); });
   let remain=qty, consumed=[];
   const emptied=[];
   for(const r of rows){ if(remain<=0)break; const av=parseInt(r.qty,10)||0; const take=Math.min(av,remain); r.qty=av-take; remain-=take;
-    consumed.push({loc,qty:take,lotNo:r.lotNo||'',lotSup:r.lotSup||'',mfd:r.mfd||'',exp:r.exp||'',sn:r.sn||'',cost:r.cost});
+    consumed.push({loc,qty:take,lotNo:r.lotNo||'',lotSup:r.lotSup||'',mfd:r.mfd||'',exp:r.exp||'',sn:r.sn||'',hu:r.hu||undefined,cost:r.cost});
     if(r.qty===0) emptied.push(r); }
   for(let i=DB.stock.length-1;i>=0;i--){ if(emptied.indexOf(DB.stock[i])>=0) DB.stock.splice(i,1); }   // only rows this sale emptied — a negative row elsewhere is stock owed, not rubbish
   return {consumed,short:remain};
@@ -758,7 +780,7 @@ function consumeAcross(code,qty){ // deduct across non-NG locations
   return {consumed,short:remain};
 }
 function receiveStock(code,loc,qty,lot){ lot=lot||{};                 // same lot = same lotNo + lotSup + mfd + exp + sn (the stock row key)
-  const k=['lotNo','lotSup','mfd','exp','sn'], same=x=>k.every(f=>String(x[f]||'')===String(lot[f]||''));
+  const k=['lotNo','lotSup','mfd','exp','sn','hu'], same=x=>k.every(f=>String(x[f]||'')===String(lot[f]||''));
   let row=(DB.stock||[]).find(x=>x.code===code&&x.loc===loc&&same(x));
   if(row){ row.qty=(parseInt(row.qty,10)||0)+qty; if(!(parseFloat(row.cost)>0)&&parseFloat(lot.cost)>0) row.cost=parseFloat(lot.cost); }
   else { const r={code,loc,qty,cost:parseFloat(lot.cost)||0}; k.forEach(f=>{ if(lot[f]) r[f]=lot[f]; }); DB.stock.push(r); } }
@@ -793,7 +815,7 @@ function promptMgrPin(cb){
 const POS_SERVER_TABLES=['itemMaster','stock','locationMaster','labelMaster','history','schedule','bookings','logisticMaster','customerMaster','supplierMaster','ngMaster','bomMaster','stocktake','returns','sales','shifts','promotions','giftcards','purchaseOrders','salesOrders','mpOrders'];
 /* tables this terminal sends: the fixed list + optional ones the server says it has (caps "table:<name>") */
 function posTables(){ const extra=((META&&META.caps)||[]).filter(c=>/^table:/.test(c)).map(c=>c.slice(6)); return POS_SERVER_TABLES.concat(extra.filter(t=>POS_SERVER_TABLES.indexOf(t)<0)); }
-const POS_MERGE={withdrawals:'id',stock:'code|loc|lotNo|lotSup|mfd|exp|sn',history:'id',schedule:'id',bookings:'id',sales:'id',shifts:'id',returns:'id',stocktake:'id',promotions:'id',giftcards:'code',
+const POS_MERGE={labelLog:'id',huMaster:'code',withdrawals:'id',stock:'code|loc|lotNo|lotSup|mfd|exp|sn|hu?',history:'id',schedule:'id',bookings:'id',sales:'id',shifts:'id',returns:'id',stocktake:'id',promotions:'id',giftcards:'code',
   itemMaster:'code',locationMaster:'code',customerMaster:'code',supplierMaster:'code',ngMaster:'code',logisticMaster:'name',purchaseOrders:'id',salesOrders:'id',mpOrders:'id'};   // same keys as the server
 /* settings travel as a PATCH (only the fields that changed) once the server says it can merge them —
    a whole-object replace would undo another user's recent change (menus, features, label setup…) */
@@ -887,7 +909,8 @@ const Store={
       return false;
     }
   },
-  _rowKey(row,key){ return key.split('|').map(f=>(row&&row[f]!=null)?String(row[f]):'').join('|'); },
+  _rowKey(row,key){ let s=''; key.split('|').forEach((f,i)=>{ const opt=f.slice(-1)==='?'; if(opt) f=f.slice(0,-1);   // "field?" only when the row has it (hu = pallet / tote)
+    const v=(row&&row[f]!=null)?String(row[f]):''; if(opt&&v==='') return; s+=(i?'|':'')+v; }); return s; },
   /* baseline = what the server has (called whenever data is (re)loaded) */
   snapshot(){
     this._snap={}; this._snapRows={}; this._cur=null; if(!CID)return;
@@ -1336,21 +1359,22 @@ function vDashboard(){
     else if(x.type==='IN'&&x.status==='Return'&&x.date===today()) cogsOf['R|'+k]=(cogsOf['R|'+k]||0)+(parseFloat(x.cogs)||0); });
   const prod={}, usedC={}; let netRev=0; ts.forEach(s=>{ const ex=exVat(s); netRev+=ex; const ratio=(parseFloat(s.subtotal)>0)?ex/parseFloat(s.subtotal):1;
     s.lines.forEach(l=>{ prod[l.code]=prod[l.code]||{name:l.name,qty:0,amt:0,net:0,cost:0}; const it=itemByCode(l.code), k=s.ref+'|'+l.code;
-    prod[l.code].qty+=l.qty; prod[l.code].amt+=lineTotal(l); prod[l.code].net+=lineTotal(l)*ratio;
+    prod[l.code].qty+=bq(l); prod[l.code].amt+=lineTotal(l); prod[l.code].net+=lineTotal(l)*ratio;
     if(cogsOf[k]!=null){ if(!usedC[k]){ prod[l.code].cost+=cogsOf[k]; usedC[k]=1; } }        // a bill's lots counted once per item
-    else prod[l.code].cost+=(l.cost!=null?parseFloat(l.cost)||0:costOf(it))*l.qty; }); });
+    else prod[l.code].cost+=(l.cost!=null?parseFloat(l.cost)||0:costOf(it))*bq(l); }); });
   /* today's refunds come off sales, and the cost of goods put back comes off cost */
   rets.forEach(r=>{ const s0=(DB.sales||[]).find(x=>x.ref===r.origRef), exR=s0&&(parseFloat(s0.total)||0)>0?exVat(s0)/parseFloat(s0.total):1;
     netRev-=(parseFloat(r.refund)||0)*exR;
     (r.lines||[]).forEach(l=>{ const p=prod[l.code]=prod[l.code]||{name:l.name,qty:0,amt:0,net:0,cost:0}, k='R|'+r.origRef+'|'+l.code;
-      p.qty-=(l.qty||0); p.amt-=(l.amount||0); p.net-=(l.amount||0)*exR;
+      p.qty-=(l.base!=null?l.base:(l.qty||0)); p.amt-=(l.amount||0); p.net-=(l.amount||0)*exR;
       if(cogsOf[k]!=null&&!usedC[k]){ p.cost-=cogsOf[k]; usedC[k]=1; } }); });
   const top=Object.entries(prod).map(([c,d])=>({code:c,...d})).sort((a,b)=>b.qty-a.qty).slice(0,6);
   const totalCost=Object.values(prod).reduce((a,p)=>a+p.cost,0);
   const profit=netRev-totalCost;
   const byProfit=Object.entries(prod).map(([c,d])=>({code:c,...d,profit:d.net-d.cost})).sort((a,b)=>b.profit-a.profit).slice(0,10);
   // payment mix
-  const pay={}; ts.forEach(s=>(s.pay||[]).forEach(p=>{ pay[p.method]=(pay[p.method]||0)+p.amount; }));
+  const pay={}; ts.forEach(s=>{ (s.pay||[]).forEach(p=>{ pay[p.method]=(pay[p.method]||0)+p.amount; });
+    const tc=(s.pay||[]).filter(p=>p.method==='cash').reduce((a,p)=>a+p.amount,0); if(tc) pay.cash=r2(pay.cash-Math.min(s.change||0,tc)); });   /* change goes back out of the cash */
   const barH=activeH.length?activeH:hrs.map((v,i)=>({h:i,v})).slice(8,20);
   return `
   <div class="cards" style="margin-bottom:14px">
@@ -1504,7 +1528,7 @@ function onScanSuccess(raw){
 }
 let POS_PAGE=1;
 const POS_PAGE_SIZE=30;
-function posTab(t){ POS_TAB=t; POS_PAGE=1; $('pgrid').innerHTML=productCards($('scan')?$('scan').value:''); bindPcardLongPress(); renderPosPager(); }
+function posTab(t){ POS_TAB=t; POS_PAGE=1; if(!$('pgrid')) return; $('pgrid').innerHTML=productCards($('scan')?$('scan').value:''); bindPcardLongPress(); renderPosPager(); }
 function productCards(q){
   q=(q||'').toLowerCase().trim();
   let list=(DB.itemMaster||[]).slice();
@@ -1600,8 +1624,8 @@ function showPcardDetail(code){
     </div>
     <div class="field" style="margin-bottom:10px"><label>${T('คงเหลือรวม','Total stock')}</label><div style="font-weight:800;font-size:16px;color:${st>0?'var(--ok)':'var(--danger)'}">${st}</div></div>
     <div class="muted" style="margin-bottom:6px;font-weight:700">${T('ตำแหน่งจัดเก็บ','Storage locations')}</div>
-    ${locs.length?`<table class="t"><thead><tr><th>${T('ตำแหน่ง','Location')}</th><th>Lot</th><th>EXP</th><th style="text-align:right">${T('จำนวน','Qty')}</th></tr></thead>
-     <tbody>${locs.map(l=>`<tr><td>${esc(l.loc)}</td><td>${esc(l.lotNo||'-')}</td><td>${esc(l.exp||'-')}</td><td style="text-align:right">${esc(l.qty)}</td></tr>`).join('')}</tbody></table>`
+    ${locs.length?`<table class="t"><thead><tr><th>${T('ตำแหน่ง','Location')}</th>${posHuOn('pallet')?`<th>${T('พาเลท','Pallet')}</th>`:''}${posHuOn('tote')?`<th>${T('ตะกร้า','Tote')}</th>`:''}<th>Lot</th><th>EXP</th><th style="text-align:right">${T('จำนวน','Qty')}</th></tr></thead>
+     <tbody>${locs.map(l=>`<tr><td>${esc(l.loc)}</td>${posHuOn('pallet')?`<td>${posHuTag(posHuOf(l.hu).pallet,'pallet')}</td>`:''}${posHuOn('tote')?`<td>${posHuTag(posHuOf(l.hu).tote,'tote')}</td>`:''}<td>${esc(l.lotNo||'-')}</td><td>${esc(l.exp||'-')}</td><td style="text-align:right">${esc(l.qty)}</td></tr>`).join('')}</tbody></table>`
      :`<div class="muted" style="padding:10px 0">${T('ไม่มีข้อมูลตำแหน่งจัดเก็บ','No storage location data')}</div>`}`,
    [{t:T('ปิด','Close'),c:'ghost',fn:closeModal},
     {t:T('เพิ่มลงตะกร้า','Add to cart'),c:'primary',fn:()=>{ closeModal(); playClickSound(); addToCart(code); }}],true);
@@ -1666,7 +1690,7 @@ function addToCart(code){
   if(VIEW==='withdraw'){ wdAddToCart(code); return; }
   const it=itemByCode(code); if(!it){toast(T('ไม่พบสินค้า','Not found'),'err');return;}
   const st=stockTotal(code);
-  let line=CART.find(l=>l.code===code&&!l.priceEdited);
+  let line=CART.find(l=>l.code===code&&!l.priceEdited&&!((l.mult||1)>1));
   if(line){ line.qty++; } else { CART.push({code,name:it.name||code,unit:it.unit||'',price:priceOf(it),qty:1,disc:0,note:'',priceEdited:false}); }
   refreshCart(); toast(it.name||code,'ok');
 }
@@ -1705,7 +1729,7 @@ function vWithdraw(){
 }
 function wdAddToCart(code){
   const it=itemByCode(code); if(!it){toast(T('ไม่พบสินค้า','Not found'),'err');return;}
-  let line=WD_CART.find(l=>l.code===code);
+  let line=WD_CART.find(l=>l.code===code&&!((l.mult||1)>1));
   if(line){ line.qty++; } else { WD_CART.push({code,name:it.name||code,unit:it.unit||'',qty:1,note:''}); }
   wdRefreshCart(); toast(it.name||code,'ok');
 }
@@ -1722,6 +1746,7 @@ function wdCartHtml(){
       <div class="lt">${l.qty}</div></div>
     <div class="r2">
       <div class="qtybox"><button onclick="wdQty(${i},-1)">−</button><input value="${l.qty}" onchange="wdSetQty(${i},this.value)"><button onclick="wdQty(${i},1)">+</button></div>
+      ${wdUnitMini(i)}
       <button class="mini" onclick="wdNote(${i})">${T('หมายเหตุ','Note')}${l.note?' •':''}</button>
       <button class="mini del" onclick="wdDel(${i})">${T('ลบ','Del')}</button>
     </div></div>`).join('');
@@ -1749,22 +1774,22 @@ function wdCartFoot(){
 function wdClearCart(){ if(!WD_CART.length)return; WD_CART=[]; WD_NOTE=''; closeCartOverlay(); render(); }
 /* items in a cart that need more than is on hand (non-NG locations): [{code,name,need,have}] */
 function shortages(lines){ const need={}, nm={};
-  lines.forEach(l=>{ need[l.code]=(need[l.code]||0)+(parseInt(l.qty,10)||0); nm[l.code]=l.name||l.code; });
+  lines.forEach(l=>{ need[l.code]=(need[l.code]||0)+bq(l); nm[l.code]=l.name||l.code; });
   return Object.keys(need).filter(c=>stockTotal(c)<need[c]).map(c=>({code:c,name:nm[c],need:need[c],have:stockTotal(c)})); }
 function wdConfirm(){
   if(!WD_CART.length)return;
   const sh=shortages(WD_CART);
   if(sh.length){ toast(T('สต๊อกไม่พอ: ','Not enough stock: ')+sh.map(x=>x.code+' ('+x.have+'/'+x.need+')').join(', '),'err'); return; }
   WD_CART.forEach(l=>{
-    const r=consumeAcross(l.code,parseInt(l.qty,10)||0);          // oldest lot first, across non-NG locations
+    const r=consumeAcross(l.code,bq(l));                           // oldest lot first, across non-NG locations (a package = its pieces)
     const itC=costOf(itemByCode(l.code));
     r.consumed.filter(c=>c.qty>0).forEach(c=>{ const cst=parseFloat(c.cost)>0?parseFloat(c.cost):itC;
-      hpush({id:uid('H'),type:'OUT',date:today(),time:nowTime(),code:l.code,name:l.name,loc:c.loc,lotNo:c.lotNo||'',lotSup:c.lotSup||'',mfd:c.mfd||'',exp:c.exp||'',sn:c.sn||'',
+      hpush({id:uid('H'),type:'OUT',date:today(),time:nowTime(),code:l.code,name:l.name,loc:c.loc,lotNo:c.lotNo||'',lotSup:c.lotSup||'',mfd:c.mfd||'',exp:c.exp||'',sn:c.sn||'',hu:c.hu,
         cost:cst,cogs:r2(cst*c.qty),qty:c.qty,unitQty:l.unit,note:(WD_NOTE||'').trim()||'Withdraw',status:'Withdraw'}); });
   });
   if(!Array.isArray(DB.withdrawals))DB.withdrawals=[];
   DB.withdrawals.push({id:uid('WD'),date:today(),time:nowTime(),by:(session.user&&(session.user.fullName||session.user.username))||'',note:(WD_NOTE||'').trim(),
-    lines:WD_CART.map(l=>({code:l.code,name:l.name,unit:l.unit,qty:l.qty,note:l.note||''}))});
+    lines:WD_CART.map(l=>({code:l.code,name:l.name,unit:l.unit,qty:l.qty,mult:l.mult||1,base:bq(l),note:l.note||''}))});
   Store.save(true);
   const n=wdCartCount();
   WD_CART=[]; WD_NOTE='';
@@ -2018,14 +2043,14 @@ function completeSale(payLines,change){
   if(crRec) crRec.storeCredit=r2(r2(crRec.storeCredit)-crNeed);
   const ref=billRef('POS');
   // deduct stock + history
-  CART.forEach(l=>{ const q=parseInt(l.qty,10)||0, {consumed,short}=consumeAcross(l.code,q), unitVal=q?lineTotal(l)/q:0, itemCost=costOf(itemByCode(l.code));
+  CART.forEach(l=>{ const q=bq(l), {consumed,short}=consumeAcross(l.code,q), unitVal=q?lineTotal(l)/q:0, itemCost=costOf(itemByCode(l.code));
     const costOfLot=c=>{ const v=parseFloat(c.cost); return v>0?v:itemCost; };   // a row without its own cost: the item's cost, never 0
     const base={type:'OUT',date:today(),time:nowTime(),code:l.code,name:l.name,unitQty:l.unit,orderNo:ref,customer:CUR_CUSTOMER?CUR_CUSTOMER.name:'',price:l.price,status:'Sale'};
-    consumed.filter(c=>c.qty>0).forEach(c=>hpush(Object.assign({id:uid('H'),loc:c.loc,lotNo:c.lotNo||'',lotSup:c.lotSup||'',mfd:c.mfd||'',exp:c.exp||'',sn:c.sn||'',qty:c.qty,value:r2(unitVal*c.qty),cost:costOfLot(c),cogs:r2(costOfLot(c)*c.qty),note:'POS'},base)));
+    consumed.filter(c=>c.qty>0).forEach(c=>hpush(Object.assign({id:uid('H'),loc:c.loc,lotNo:c.lotNo||'',lotSup:c.lotSup||'',mfd:c.mfd||'',exp:c.exp||'',sn:c.sn||'',hu:c.hu,qty:c.qty,value:r2(unitVal*c.qty),cost:costOfLot(c),cogs:r2(costOfLot(c)*c.qty),note:'POS'},base)));
     if(short>0) hpush(Object.assign({id:uid('H'),loc:'',qty:short,value:r2(unitVal*short),cost:itemCost,cogs:r2(itemCost*short),oversold:true,note:'POS — '+T('ขายเกินสต๊อก (ผู้จัดการอนุมัติ)','oversold (manager approved)')},base));
   });
   const cfgAtSale=posCfg();
-  const sale={id:uid('S'),ref,date:today(),time:nowTime(),cashier:session.user.username,cashierName:whoName(),branch:posCfg().branch,
+  const sale={id:uid('S'),ref,date:today(),time:nowTime(),orderType:window.P3_TYPE||'',cashier:session.user.username,cashierName:whoName(),branch:posCfg().branch,
     customer:CUR_CUSTOMER?CUR_CUSTOMER.code:'',customerName:CUR_CUSTOMER?CUR_CUSTOMER.name:'',
     lines:JSON.parse(JSON.stringify(CART)).map(l=>Object.assign(l,{cost:costOf(itemByCode(l.code))})),subtotal:r2(cartSubtotal()),billDisc:billDiscAmt(),memberDisc:memberDiscAmt(),promoDisc:promoDiscAmt(),promo:CUR_PROMO?CUR_PROMO.name:'',promoCode:CUR_PROMO?String(CUR_PROMO.code||''):'',
     vatEnabled:!!cfgAtSale.vatEnabled,vatMode:cfgAtSale.vatMode||'incl',vatRate:cfgAtSale.vatRate||0,vatAmt:cartVatPart(),
@@ -2043,7 +2068,7 @@ function completeSale(payLines,change){
 /* ============================ MODULE 6: RECEIPT ============================ */
 function receiptHTML(sale,forPrint){
   const cfg=posCfg();
-  const lines=sale.lines.map(l=>`<tr><td>${esc(l.name)}<br><small>${esc(l.code)} ${l.qty}x฿${money(l.price)}${l.disc?(' -฿'+money(l.disc)):''}</small></td><td style="text-align:right;vertical-align:top">฿${money(Math.max(0,(l.price*l.qty)-(l.disc||0)))}</td></tr>`).join('');
+  const lines=sale.lines.map(l=>`<tr><td>${esc(l.name)}<br><small>${esc(l.code)} ${l.qty}${(l.mult||1)>1?' '+esc(l.unit||''):''}x฿${money(l.price)}${l.disc?(' -฿'+money(l.disc)):''}</small></td><td style="text-align:right;vertical-align:top">฿${money(Math.max(0,(l.price*l.qty)-(l.disc||0)))}</td></tr>`).join('');
   const pay=(sale.pay||[]).map(p=>`<tr><td>${payLabel(p.method)}${p.ref?(' '+esc(p.ref)):''}</td><td style="text-align:right">฿${money(p.amount)}</td></tr>`).join('');
   return `<div style="font-family:'Sarabun',monospace;width:300px;margin:0 auto;color:#000;font-size:12.5px">
     <div style="text-align:center;margin-bottom:6px"><b style="font-size:15px">${esc((META.companies.find(c=>c.id===CID)||{}).name||'mywms POS')}</b><br>
@@ -2143,18 +2168,18 @@ function vCustomers(){
 }
 function custTable(list){ if(!list.length)return `<div class="muted" style="padding:20px;text-align:center">${T('ยังไม่มีสมาชิก','No members')}</div>`;
   return `<table class="t cust-table"><thead><tr><th>${T('รหัส','Code')}</th><th>${T('ชื่อ','Name')}</th><th>${T('เบอร์','Phone')}</th><th>${T('ระดับ','Tier')}</th><th style="text-align:right">${T('คะแนน','Points')}</th><th style="text-align:right">${T('ยอดซื้อสะสม','Total spent')}</th><th></th></tr></thead>
-    <tbody>${list.map(c=>`<tr onclick="custHistory(${jsa(c.code)})"><td><b>${esc(c.code)}</b></td><td>${esc(c.name)}</td><td>${esc(c.phone||'-')}</td><td>${esc(c.tier||'-')}</td><td style="text-align:right">${c.points||0}</td><td style="text-align:right">฿${money(c.totalSpent||0)}</td><td style="white-space:nowrap">${isAdmin()?`<button class="btn ghost" style="padding:5px 10px" onclick="event.stopPropagation();editCustomer(${jsa(c.code)})">${IC.pencil} ${T('แก้ไข','Edit')}</button> `:''}<button class="btn ghost" style="padding:5px 10px" onclick="event.stopPropagation();custHistory(${jsa(c.code)})">${T('ประวัติ','History')}</button></td></tr>`).join('')}</tbody></table>`;
+    <tbody>${list.map(c=>`<tr onclick="custHistory(${jsa(c.code)})"><td><b>${esc(c.code)}</b></td><td>${esc(c.name)}</td><td>${esc(c.phone||'-')}</td><td>${esc(c.tier||'-')}</td><td style="text-align:right">${esc(c.points||0)}</td><td style="text-align:right">฿${money(c.totalSpent||0)}</td><td style="white-space:nowrap">${isAdmin()?`<button class="btn ghost" style="padding:5px 10px" onclick="event.stopPropagation();editCustomer(${jsa(c.code)})">${IC.pencil} ${T('แก้ไข','Edit')}</button> `:''}<button class="btn ghost" style="padding:5px 10px" onclick="event.stopPropagation();custHistory(${jsa(c.code)})">${T('ประวัติ','History')}</button></td></tr>`).join('')}</tbody></table>`;
 }
 function custViewFilter(q){ q=(q||'').toLowerCase(); $('custView').innerHTML=custTable((DB.customerMaster||[]).filter(c=>!q||[c.name,c.phone,c.code].some(v=>String(v||'').toLowerCase().includes(q)))); }
 function custHistory(code){ const sales=(DB.sales||[]).filter(s=>s.customer===code&&s.status==='Paid').sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
   const c=(DB.customerMaster||[]).find(x=>x.code===code)||{};
   modal(T('ประวัติการซื้อ','Purchase history')+' · '+(c.name||''),
     `<div class="muted" style="margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
-       <span>${T('คะแนน','Points')}: <b>${c.points||0}</b> · ${T('ยอดสะสม','Total')}: <b>฿${money(c.totalSpent||0)}</b></span>
+       <span>${T('คะแนน','Points')}: <b>${esc(c.points||0)}</b> · ${T('ยอดสะสม','Total')}: <b>฿${money(c.totalSpent||0)}</b></span>
        ${isAdmin()?`<button class="btn ghost" style="padding:5px 10px" onclick="editCustomer(${jsa(code)})">${IC.pencil} ${T('แก้ไขข้อมูล','Edit info')}</button>`:''}
      </div>
      <table class="t"><thead><tr><th>${T('วันที่','Date')}</th><th>Ref</th><th style="text-align:right">${T('ยอด','Total')}</th><th></th></tr></thead>
-     <tbody>${sales.map(s=>`<tr><td>${s.date} ${s.time}</td><td>${esc(s.ref)}</td><td style="text-align:right">฿${money(s.total)}</td><td><button class="btn ghost" style="padding:4px 10px" onclick="showReceipt(${jsa(s.id)})">${T('ใบเสร็จ','Receipt')}</button></td></tr>`).join('')||`<tr><td colspan="4" class="muted">${T('ยังไม่มีประวัติ','No history')}</td></tr>`}</tbody></table>`,null,true);
+     <tbody>${sales.map(s=>`<tr><td>${esc(s.date)} ${esc(s.time)}</td><td>${esc(s.ref)}</td><td style="text-align:right">฿${money(s.total)}</td><td><button class="btn ghost" style="padding:4px 10px" onclick="showReceipt(${jsa(s.id)})">${T('ใบเสร็จ','Receipt')}</button></td></tr>`).join('')||`<tr><td colspan="4" class="muted">${T('ยังไม่มีประวัติ','No history')}</td></tr>`}</tbody></table>`,null,true);
 }
 function editCustomer(code){
   if(!isAdmin())return;
@@ -2166,7 +2191,7 @@ function editCustomer(code){
     <div class="row2"><div class="field"><label>${T('ระดับ','Tier')}</label><select id="ecTier" class="inp">
       ${['Silver','Gold','Platinum'].map(t=>`<option ${c.tier===t?'selected':''}>${t}</option>`).join('')}</select></div>
     <div class="field"><label>${T('ส่วนลดสมาชิก %','Member discount %')}</label><input id="ecDisc" class="inp" type="number" value="${c.discPct!=null?c.discPct:(posCfg().memberDisc||5)}"></div></div>
-    <div class="field"><label>${T('คะแนนสะสม','Points')}</label><input id="ecPoints" class="inp" type="number" value="${c.points||0}"></div>`,
+    <div class="field"><label>${T('คะแนนสะสม','Points')}</label><input id="ecPoints" class="inp" type="number" value="${esc(c.points||0)}"></div>`,
    [{t:T('ยกเลิก','Cancel'),c:'ghost',fn:closeModal},
     {t:T('บันทึก','Save'),c:'primary',fn:()=>saveCustomerEdit(code)}]);
 }
@@ -2258,7 +2283,7 @@ function vReturns(){ const paid=(DB.sales||[]).filter(s=>s.status==='Paid').sort
     <div id="retList">${retTable(paid)}</div></div>`;
 }
 function retTable(list){ return `<table class="t"><thead><tr><th>Ref</th><th>${T('วันที่','Date')}</th><th>${T('ลูกค้า','Customer')}</th><th style="text-align:right">${T('ยอด','Total')}</th><th></th></tr></thead>
-  <tbody>${list.map(s=>`<tr><td><b>${esc(s.ref)}</b></td><td>${s.date} ${s.time}</td><td>${esc(s.customerName||'-')}</td><td style="text-align:right">฿${money(s.total)}</td><td><button class="btn ghost" style="padding:5px 10px" onclick="doReturn(${jsa(s.id)})">${T('คืน','Return')}</button></td></tr>`).join('')||`<tr><td colspan="5" class="muted">${T('ไม่มีบิล','No bills')}</td></tr>`}</tbody></table>`;
+  <tbody>${list.map(s=>`<tr><td><b>${esc(s.ref)}</b></td><td>${esc(s.date)} ${esc(s.time)}</td><td>${esc(s.customerName||'-')}</td><td style="text-align:right">฿${money(s.total)}</td><td><button class="btn ghost" style="padding:5px 10px" onclick="doReturn(${jsa(s.id)})">${T('คืน','Return')}</button></td></tr>`).join('')||`<tr><td colspan="5" class="muted">${T('ไม่มีบิล','No bills')}</td></tr>`}</tbody></table>`;
 }
 function retFilter(q){ q=(q||'').toLowerCase(); $('retList').innerHTML=retTable((DB.sales||[]).filter(s=>s.status==='Paid'&&(s.ref||'').toLowerCase().includes(q)).slice(0,50)); }
 function retLeft(l){ return Math.max(0,(parseInt(l.qty,10)||0)-(parseInt(l.returnedQty,10)||0)); }
@@ -2314,16 +2339,17 @@ function confirmReturn(saleId,qs,method,loc){ const s=(DB.sales||[]).find(x=>x.i
   Object.entries(qs).forEach(([i,q])=>{ const l=s.lines[i]; const unit=lineTotal(l)/(parseInt(l.qty,10)||1)*ratio; let amt=r2(unit*q);
     if(refund+amt>maxLeft) amt=r2(maxLeft-refund); refund=r2(refund+amt);
     l.returnedQty=(parseInt(l.returnedQty,10)||0)+q;
-    let left=q;
+    const mu=Math.max(1,parseInt(l.mult,10)||1), uBase=unit/mu; let left=q*mu;          // a returned package puts its pieces back
     (DB.history||[]).filter(x=>x.type==='OUT'&&x.orderNo===s.ref&&x.code===l.code&&x.loc&&!x.oversold).forEach(x=>{
       const can=Math.max(0,(parseInt(x.qty,10)||0)-(parseInt(x.retQty,10)||0)), take=Math.min(can,left); if(take<=0) return;
       const lot={lotNo:x.lotNo||'',lotSup:x.lotSup||'',mfd:x.mfd||'',exp:x.exp||'',sn:x.sn||'',cost:parseFloat(x.cost)||costOf(itemByCode(l.code))};
       const toLoc=loc||x.loc;                                        // no location chosen (none set up): back where it came from
+      if(x.hu&&toLoc===x.loc) lot.hu=x.hu;                           // back into the pallet / tote it was sold from
       receiveStock(l.code,toLoc,take,lot); x.retQty=(parseInt(x.retQty,10)||0)+take; left-=take;
-      hpush(Object.assign({id:uid('H'),type:'IN',date:today(),time:nowTime(),code:l.code,name:l.name,loc:toLoc,qty:take,orderNo:s.ref,value:r2(unit*take),cogs:r2(lot.cost*take),note:'POS Return',status:'Return'},lot)); });
-    if(left>0) hpush({id:uid('H'),type:'IN',date:today(),time:nowTime(),code:l.code,name:l.name,loc:'',qty:0,refundOnlyQty:left,orderNo:s.ref,value:r2(unit*left),   // sold beyond stock: money back, no goods to restock
+      hpush(Object.assign({id:uid('H'),type:'IN',date:today(),time:nowTime(),code:l.code,name:l.name,loc:toLoc,qty:take,orderNo:s.ref,value:r2(uBase*take),cogs:r2(lot.cost*take),note:'POS Return',status:'Return'},lot)); });
+    if(left>0) hpush({id:uid('H'),type:'IN',date:today(),time:nowTime(),code:l.code,name:l.name,loc:'',qty:0,refundOnlyQty:left,orderNo:s.ref,value:r2(uBase*left),   // sold beyond stock: money back, no goods to restock
       note:'POS Return — '+T('ไม่คืนสต๊อก (ขายเกินสต๊อก)','not restocked (was oversold)'),status:'Return'});
-    rlines.push({code:l.code,name:l.name,qty:q,amount:amt}); });
+    rlines.push({code:l.code,name:l.name,qty:q,mult:mu,base:q*mu,unit:l.unit||'',amount:amt}); });
   const ret={id:uid('R'),ref:billRef('RET'),origRef:s.ref,date:today(),time:nowTime(),cashier:session.user.username,customer:s.customer,customerName:s.customerName,lines:rlines,refund,method,status:'Return',shiftId:CUR_SHIFT?CUR_SHIFT.id:''};
   DB.sales.push(ret);
   s.refunded=r2((parseFloat(s.refunded)||0)+refund);
@@ -2336,7 +2362,8 @@ function confirmReturn(saleId,qs,method,loc){ const s=(DB.sales||[]).find(x=>x.i
   if(s.customer){ const c=(DB.customerMaster||[]).find(x=>x.code===s.customer);
     if(c){ if(method==='credit') c.storeCredit=r2((parseFloat(c.storeCredit)||0)+refund);
       c.totalSpent=Math.max(0,r2((parseFloat(c.totalSpent)||0)-refund));                       // undo what the refunded part earned
-      const rate=parseFloat(posCfg().pointRate)||0; if(rate>0) c.points=Math.max(0,(parseInt(c.points,10)||0)-Math.floor(refund/rate)); } }
+      const rate=parseFloat(posCfg().pointRate)||0; if(rate>0&&(parseInt(s.points,10)||0)>0){ const tot=parseFloat(s.total)||0, after=parseFloat(s.refunded)||0, before=r2(after-refund);   /* points the bill keeps, before vs after */
+        const lose=Math.max(0,Math.floor(Math.max(0,tot-before)/rate)-Math.floor(Math.max(0,tot-after)/rate)); c.points=Math.max(0,(parseInt(c.points,10)||0)-lose); } } }
   Store.save(); closeModal(); render(); toast(T('คืนสินค้าสำเร็จ','Return complete')+' ฿'+money(refund),'ok');
 }
 
@@ -2355,7 +2382,7 @@ function shiftCashExpected(sh){ let cash=sh.openFloat||0;
   (sh.cashIn||[]).forEach(c=>cash+=c.amount); (sh.cashOut||[]).forEach(c=>cash-=c.amount);
   // change is handed out of the drawer, but never more than the cash tendered on that bill
   shiftSales(sh).forEach(s=>{ if(s.status!=='Paid')return; const tendered=(s.pay||[]).filter(p=>p.method==='cash').reduce((a,p)=>a+p.amount,0); cash-=Math.min(s.change||0,tendered); });
-  return cash;
+  return r2(cash);
 }
 /* what moved through a shift, line by line (the same parts shiftCashExpected adds up) */
 function shiftParts(sh){ const all=shiftSales(sh), paid=all.filter(s=>s.status==='Paid'), rets=all.filter(s=>s.status==='Return');
@@ -2399,11 +2426,11 @@ function closeShift(){
     <div id="csDiffBox" class="muted"></div>`,
    [{t:T('ยกเลิก','Cancel'),c:'ghost',fn:closeModal},{t:T('ปิดกะ','Close shift'),c:'danger',fn:()=>{
      if(!CUR_SHIFT||(CUR_SHIFT.status&&CUR_SHIFT.status!=='Open')){ closeModal(); toast(T('กะนี้ปิดไปแล้ว','This shift is already closed'),'warn'); CUR_SHIFT=null; render(); return; }
-     const counted=parseFloat($('csCount').value)||0; CUR_SHIFT.closeAt=today()+' '+nowTime(); CUR_SHIFT.expected=exp; CUR_SHIFT.counted=counted; CUR_SHIFT.diff=counted-exp; CUR_SHIFT.status='Closed';
+     const counted=parseFloat($('csCount').value)||0; CUR_SHIFT.closeAt=today()+' '+nowTime(); CUR_SHIFT.expected=exp; CUR_SHIFT.counted=counted; CUR_SHIFT.diff=r2(counted-exp); CUR_SHIFT.status='Closed';
      Store.save(); const sh=CUR_SHIFT; CUR_SHIFT=null; closeModal(); render(); showShiftReport(sh.id);
    }}]);
 }
-function csDiff(exp){ const c=parseFloat($('csCount').value)||0; const d=c-exp; $('csDiffBox').innerHTML=`${T('ส่วนต่าง','Difference')}: <b style="color:${d===0?'var(--ok)':(d<0?'var(--danger)':'var(--warn)')}">฿${money(d)}</b> ${d<0?T('(ขาด)','(short)'):(d>0?T('(เกิน)','(over)'):'')}`; }
+function csDiff(exp){ const c=parseFloat($('csCount').value)||0; const d=r2(c-exp); $('csDiffBox').innerHTML=`${T('ส่วนต่าง','Difference')}: <b style="color:${d===0?'var(--ok)':(d<0?'var(--danger)':'var(--warn)')}">฿${money(d)}</b> ${d<0?T('(ขาด)','(short)'):(d>0?T('(เกิน)','(over)'):'')}`; }
 function showShiftReport(id){ const sh=(DB.shifts||[]).find(x=>x.id===id); if(!sh)return; const sp=shiftParts(sh), sales=sp.paid;
   const pay={}; sales.forEach(s=>(s.pay||[]).forEach(p=>pay[p.method]=(pay[p.method]||0)+p.amount));
   modal(T('รายงานปิดกะ','Shift close report'),
@@ -2420,12 +2447,17 @@ function showShiftReport(id){ const sh=(DB.shifts||[]).find(x=>x.id===id); if(!s
 /* ============================ MODULE 9: PRODUCT INQUIRY (stock-balance style) ============================ */
 let INQ_Q='', INQ_OPEN={}, INQ_CAT='all', INQ_PAGE=1;
 const INQ_PAGE_SIZE=30;
+/* pallet / tote of a stock row (only the levels the Super Admin switched on; tables need sql_updates/2026-10-31_handling_units.sql) */
+function posHuOn(k){ return !!(META&&Array.isArray(META.caps)&&META.caps.indexOf('table:huMaster')>=0)&&((settings().huCtl||{})[k]||'off')!=='off'; }
+function posHuOf(hu){ if(!hu) return {pallet:'',tote:''}; const L=DB.huMaster||[], x=L.find(c=>c.code===hu);
+  if(!x) return {pallet:hu,tote:''}; if(x.type==='tote'){ const p=x.parent?L.find(c=>c.code===x.parent):null; return {pallet:p?p.code:'',tote:x.code}; } return {pallet:x.code,tote:''}; }
+function posHuTag(code,kind){ return code?'<span class="pill" style="background:'+(kind==='pallet'?'#ffedd5;color:#9a3412':'#dcfce7;color:#166534')+'">'+esc(code)+'</span>':'<span class="muted">-</span>'; }
 function vInquiry(){
   const cats=[...new Set((DB.itemMaster||[]).map(i=>i.cat).filter(Boolean))];
   return `<div class="panel"><h3 style="display:flex;justify-content:space-between;align-items:center">${T('ตรวจสอบสินค้า / คงเหลือ (จาก WMS)','Product & stock (from WMS)')}
     <span class="muted">${(DB.itemMaster||[]).length} ${T('รายการ','items')}</span></h3>
     <div class="searchbar" style="margin-bottom:12px">
-      <input id="inqBox" class="inp" placeholder="${T('ค้นหา: รหัส · ชื่อ · Lot · ตำแหน่ง · หมวดหมู่','Search: code · name · lot · location · category')}" value="${esc(INQ_Q)}" oninput="INQ_Q=this.value;inqSearch()">
+      <input id="inqBox" class="inp" placeholder="${T('ค้นหา: รหัส · ชื่อ · Lot · ตำแหน่ง'+(posHuOn('pallet')?' · พาเลท':'')+(posHuOn('tote')?' · ตะกร้า':'')+' · หมวดหมู่','Search: code · name · lot · location'+(posHuOn('pallet')?' · pallet':'')+(posHuOn('tote')?' · tote':'')+' · category')}" value="${esc(INQ_Q)}" oninput="INQ_Q=this.value;inqSearch()">
       ${cats.length?`<select class="inp" style="width:auto;flex:0 0 auto" onchange="INQ_CAT=this.value;inqSearch()">
         <option value="all" ${INQ_CAT==='all'?'selected':''}>${T('ทุกหมวดหมู่','All categories')}</option>
         ${cats.map(c=>`<option value="${esc(c)}" ${INQ_CAT===c?'selected':''}>${esc(c)}</option>`).join('')}
@@ -2437,13 +2469,13 @@ function inqRows(){ // build one row per item with its lots; filter by q across 
   const q=(INQ_Q||'').toLowerCase().trim();
   return (DB.itemMaster||[]).filter(i=>INQ_CAT==='all'||i.cat===INQ_CAT).map(i=>{
     const lots=(DB.stock||[]).filter(s=>s.code===i.code&&(parseInt(s.qty,10)||0)>0)
-      .map(s=>({loc:s.loc,qty:parseInt(s.qty,10)||0,lotNo:s.lotNo||'',exp:s.exp||'',cost:s.cost}));
+      .map(s=>Object.assign({loc:s.loc,qty:parseInt(s.qty,10)||0,lotNo:s.lotNo||'',exp:s.exp||'',cost:s.cost},posHuOf(s.hu)));
     return {it:i,lots,total:lots.reduce((a,l)=>a+l.qty,0)};
   }).filter(r=>{
     if(!q)return true;
     const i=r.it;
     if([i.code,i.name,i.barcode,i.cat,i.sup].some(v=>String(v||'').toLowerCase().includes(q)))return true;
-    if(r.lots.some(l=>[l.loc,l.lotNo].some(v=>String(v||'').toLowerCase().includes(q))))return true;
+    if(r.lots.some(l=>[l.loc,l.lotNo,l.pallet,l.tote].some(v=>String(v||'').toLowerCase().includes(q))))return true;
     return false;
   });
 }
@@ -2483,8 +2515,8 @@ function inqTable(){
           <span>${T('หน่วย','Unit')}: <b style="color:var(--text)">${esc(i.unit||'-')}</b></span>
           ${isAdmin()?`<button class="btn ghost" style="padding:4px 10px" onclick="event.stopPropagation();editProduct(${jsa(i.code)})">${IC.pencil} ${T('แก้ไข','Edit')}</button>`:''}
         </div>
-        ${r.lots.length?`<table class="t" style="margin:0"><thead><tr><th>${T('ตำแหน่ง','Location')}</th><th>Lot</th><th>EXP</th><th style="text-align:right">${T('จำนวน','Qty')}</th>${cfg&&settings().costing?`<th style="text-align:right">${T('ต้นทุน','Cost')}</th>`:''}</tr></thead>
-        <tbody>${r.lots.sort((a,b)=>String(a.exp||a.lotNo).localeCompare(String(b.exp||b.lotNo))).map(l=>`<tr><td>${esc(l.loc)}</td><td>${esc(l.lotNo||'-')}</td><td>${esc(l.exp||'-')}</td><td style="text-align:right">${l.qty}</td>${settings().costing?`<td style="text-align:right">฿${money(l.cost||0)}</td>`:''}</tr>`).join('')}</tbody></table>`:`<div class="muted">${T('ไม่มีข้อมูลตำแหน่ง/ล็อต','No location/lot data')}</div>`}
+        ${r.lots.length?`<table class="t" style="margin:0"><thead><tr><th>${T('ตำแหน่ง','Location')}</th>${posHuOn('pallet')?`<th>${T('พาเลท','Pallet')}</th>`:''}${posHuOn('tote')?`<th>${T('ตะกร้า','Tote')}</th>`:''}<th>Lot</th><th>EXP</th><th style="text-align:right">${T('จำนวน','Qty')}</th>${cfg&&settings().costing?`<th style="text-align:right">${T('ต้นทุน','Cost')}</th>`:''}</tr></thead>
+        <tbody>${r.lots.sort((a,b)=>String(a.exp||a.lotNo).localeCompare(String(b.exp||b.lotNo))).map(l=>`<tr><td>${esc(l.loc)}</td>${posHuOn('pallet')?`<td>${posHuTag(l.pallet,'pallet')}</td>`:''}${posHuOn('tote')?`<td>${posHuTag(l.tote,'tote')}</td>`:''}<td>${esc(l.lotNo||'-')}</td><td>${esc(l.exp||'-')}</td><td style="text-align:right">${l.qty}</td>${settings().costing?`<td style="text-align:right">฿${money(l.cost||0)}</td>`:''}</tr>`).join('')}</tbody></table>`:`<div class="muted">${T('ไม่มีข้อมูลตำแหน่ง/ล็อต','No location/lot data')}</div>`}
       </td></tr>`; }
       return main+sub;
     }).join('')}</tbody></table></div>${pagerHtml}`;
@@ -2878,8 +2910,8 @@ function reportBody(){
   if(RPT==='shift'){ const shs=(DB.shifts||[]).filter(s=>s.status==='Closed'&&rptInRange(String(s.closeAt||'').slice(0,10)));
     return rptTable(['กะ/Shift','พนักงาน/Staff','ปิด/Close','คาดหวัง/Exp','นับได้/Count','ส่วนต่าง/Diff'],shs.map(s=>[s.ref,s.cashierName,s.closeAt,'฿'+money(s.expected),'฿'+money(s.counted),'฿'+money(s.diff)]),'shift'); }
   if(RPT==='product'){ const by={}; sales.forEach(s=>{ const ratio=(parseFloat(s.subtotal)>0)?(parseFloat(s.total)||0)/parseFloat(s.subtotal):1;   // what was really paid per line — returns are refunded on the same basis
-      s.lines.forEach(l=>{by[l.code]=by[l.code]||{name:l.name,qty:0,amt:0};by[l.code].qty+=l.qty;by[l.code].amt+=r2(Math.max(0,l.price*l.qty-(l.disc||0))*ratio);}); });
-    rets.forEach(r=>(r.lines||[]).forEach(l=>{ if(!by[l.code])by[l.code]={name:l.name,qty:0,amt:0}; by[l.code].qty-=(l.qty||0); by[l.code].amt-=(l.amount||0); }));   // net of returns
+      s.lines.forEach(l=>{by[l.code]=by[l.code]||{name:l.name,qty:0,amt:0};by[l.code].qty+=bq(l);by[l.code].amt+=r2(Math.max(0,l.price*l.qty-(l.disc||0))*ratio);}); });
+    rets.forEach(r=>(r.lines||[]).forEach(l=>{ if(!by[l.code])by[l.code]={name:l.name,qty:0,amt:0}; by[l.code].qty-=(l.base!=null?l.base:(l.qty||0)); by[l.code].amt-=(l.amount||0); }));   // net of returns (pieces)
     return rptTable(['รหัส/Code','สินค้า/Item','จำนวน/Qty','ยอด/Amount'],Object.entries(by).sort((a,b)=>b[1].qty-a[1].qty).map(([c,v])=>[c,v.name,v.qty,'฿'+money(v.amt)]),'product'); }
 }
 function billsTable(list){
@@ -2995,7 +3027,8 @@ function stkPickPhoto(){
   };
   inp.click();
 }
-async function stkSave(code){
+async function stkSave(code){ if(stkSave._busy) return; stkSave._busy=true; try{ return await stkSave_(code); } finally{ stkSave._busy=false; } }
+async function stkSave_(code){
   if(!isMgr()){ toast(T('เฉพาะผู้จัดการขึ้นไป','Manager or above only'),'err'); return; }
   const it=itemByCode(code); if(!it)return;
   const cv=String(($('stkQty')||{}).value||'').trim(), counted=Number(cv);
@@ -3018,12 +3051,13 @@ async function stkSave(code){
   const stNote=T('นับสต๊อก','Stocktake')+' ('+sysQty+'→'+counted+')'+(note?' · '+note:''), itC=costOf(it);
   if(diff<0){ const {consumed}=issueFIFO(code,loc,-diff);           // oldest lot first — one history row per lot taken
     consumed.filter(c=>c.qty>0).forEach(c=>{ const cst=parseFloat(c.cost)>0?parseFloat(c.cost):itC;
-      hpush({id:uid('H'),type:'OUT',date:today(),time:nowTime(),code,name:it.name||code,loc,lotNo:c.lotNo||'',lotSup:c.lotSup||'',mfd:c.mfd||'',exp:c.exp||'',sn:c.sn||'',
+      hpush({id:uid('H'),type:'OUT',date:today(),time:nowTime(),code,name:it.name||code,loc,lotNo:c.lotNo||'',lotSup:c.lotSup||'',mfd:c.mfd||'',exp:c.exp||'',sn:c.sn||'',hu:c.hu,
         cost:cst,cogs:r2(cst*c.qty),qty:c.qty,unitQty:it.unit||'',note:stNote,status:'Adjust'}); }); }
   else if(diff>0){ receiveStock(code,loc,diff,{cost:itC});           // found extra: valued at the item's cost
     hpush({id:uid('H'),type:'IN',date:today(),time:nowTime(),code,name:it.name||code,loc,cost:itC,qty:diff,unitQty:it.unit||'',note:stNote,status:'Adjust'}); }
   if(!Array.isArray(DB.stocktake))DB.stocktake=[];
-  DB.stocktake.push({id:uid('ST'),date:today(),time:nowTime(),code,name:it.name||code,loc,before:sysQty,counted,diff,by:(session.user&&(session.user.fullName||session.user.username))||'',note,photo:photoRef});
+  DB.stocktake.push({id:uid('ST'),ref:'CNT-POS-'+today().replace(/-/g,'')+'-'+nowTime().replace(/:/g,'')+'-'+code,status:'Done',scopeTxt:'POS',pos:true,   /* also a closed one-line sheet for the web / phone */
+    lines:[{code,name:it.name||code,unit:it.unit||'',loc,sysQty,cntQty:counted}],date:today(),time:nowTime(),code,name:it.name||code,loc,before:sysQty,counted,diff,by:(session.user&&(session.user.fullName||session.user.username))||'',note,photo:photoRef});
   Store.save();
   closeModal();
   _stkPhotoData=null;
@@ -3032,14 +3066,14 @@ async function stkSave(code){
   toast(T('บันทึกการนับสต๊อกแล้ว','Stock count saved')+(diff!==0?(' · '+(diff>0?'+':'')+diff):''),'ok');
 }
 function stkHistoryTable(){
-  const rows=(DB.stocktake||[]).slice().sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time)).slice(0,100);
+  const rows=(DB.stocktake||[]).filter(r=>r.code&&(r.pos||!Array.isArray(r.lines))).slice().sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time)).slice(0,100);   // POS counts only, not web / phone sheets
   if(!rows.length)return `<div class="muted" style="padding:14px 4px">${T('ยังไม่มีประวัติการนับสต๊อก','No stock counts yet')}</div>`;
   const groups=[]; const byDate={};
   rows.forEach(r=>{ if(!byDate[r.date]){ byDate[r.date]={date:r.date,items:[]}; groups.push(byDate[r.date]); } byDate[r.date].items.push(r); });
   return groups.map(g=>`<div style="margin-bottom:16px">
     <div style="font-weight:800;font-size:13px;color:var(--sub);margin-bottom:6px">${esc(g.date)}${g.date===today()?(' · '+T('วันนี้','Today')):''} <span class="muted" style="font-weight:400">(${g.items.length} ${T('รายการ','items')})</span></div>
     <div style="overflow:auto"><table class="t"><thead><tr><th>${T('เวลา','Time')}</th><th>${T('สินค้า','Item')}</th><th style="text-align:right">${T('ระบบ','System')}</th><th style="text-align:right">${T('นับได้','Counted')}</th><th style="text-align:right">${T('ผลต่าง','Diff')}</th><th>${T('โดย','By')}</th><th></th></tr></thead>
-     <tbody>${g.items.map(r=>`<tr><td>${esc(r.time)}</td><td><b>${esc(r.code)}</b> ${esc(r.name)}</td><td style="text-align:right">${r.before}</td><td style="text-align:right">${r.counted}</td><td style="text-align:right;color:${r.diff===0?'var(--sub)':(r.diff>0?'var(--ok)':'var(--danger)')}"><b>${r.diff>0?'+':''}${r.diff}</b></td><td class="muted">${esc(r.by||'-')}</td><td>${r.photo?`<button class="btn ghost" style="padding:4px 10px" onclick="stkViewPhoto(${jsa(r.id)})">${T('ดูรูป','Photo')}</button>`:''}</td></tr>`).join('')}</tbody></table></div>
+     <tbody>${g.items.map(r=>`<tr><td>${esc(r.time)}</td><td><b>${esc(r.code)}</b> ${esc(r.name)}</td><td style="text-align:right">${esc(r.before)}</td><td style="text-align:right">${esc(r.counted)}</td><td style="text-align:right;color:${r.diff===0?'var(--sub)':(r.diff>0?'var(--ok)':'var(--danger)')}"><b>${r.diff>0?'+':''}${esc(r.diff)}</b></td><td class="muted">${esc(r.by||'-')}</td><td>${r.photo?`<button class="btn ghost" style="padding:4px 10px" onclick="stkViewPhoto(${jsa(r.id)})">${T('ดูรูป','Photo')}</button>`:''}</td></tr>`).join('')}</tbody></table></div>
   </div>`).join('');
 }
 function stkViewPhoto(id){
@@ -3215,7 +3249,7 @@ function paintTabs(){ var tabs=document.getElementById('posTabs'); if(!tabs) ret
   tabs.appendChild(card('fav',T('รายการโปรด','Favorites'),IC.star,fav.length));
   cats.forEach(function(c){ tabs.appendChild(card(c,c,'<b>'+esc(String(c).trim().charAt(0).toUpperCase())+'</b>',cnt(c))); }); }
 var fmtN=function(v){ return (Number(v)||0).toLocaleString(); };
-function soldMap(){ var m={}; (DB.sales||[]).forEach(function(s){ if(s.status!=='Paid') return; (s.lines||[]).forEach(function(l){ m[l.code]=(m[l.code]||0)+(parseFloat(l.qty)||0); }); }); return m; }
+function soldMap(){ var m={}; (DB.sales||[]).forEach(function(s){ if(s.status!=='Paid') return; (s.lines||[]).forEach(function(l){ m[l.code]=(m[l.code]||0)+bq(l); }); }); return m; }
 function paintCards(){ var g=document.getElementById('pgrid'); if(!g) return; g.dataset.title=T('เลือกสินค้า','Select Menu'); var sold=soldMap();
   g.querySelectorAll('.pcard').forEach(function(card){ if(card.querySelector('.meta')) return; var code=card.dataset.code; var it=(typeof itemByCode==='function'?itemByCode(code):null)||{};
     var nm=card.querySelector('.nm'); if(nm) nm.insertAdjacentHTML('afterend','<div class="meta"><span>'+fmtN(stockTotal(code))+' '+esc(T('คงเหลือ','Available'))+'</span><i></i><span>'+fmtN(sold[code]||0)+' '+esc(T('ขายแล้ว','Sold'))+'</span></div>');
@@ -3243,6 +3277,321 @@ try{ paintAll(); }catch(e){}
 })();
 </script>
 
+<style id="pos-v3-theme">
+/* ================= POS v3 — white sidebar · grey menu canvas · image cards with "add" / stepper · bill panel (order type, item cards, summary, payment tiles)
+   colours: the same orange / grey family as the web app (index.html) ================= */
+:root{--bg:#eef0f3;--canvas:#f5f6f8;--card:#ffffff;--panel:#ffffff;--soft:#f6f7f9;--soft2:#fafbfc;--line:#e4e6ea;--line2:#eef0f2;
+  --text:#1f2125;--ink:#1f2125;--ink2:#34373d;--sub:#6b7280;--sub2:#9aa0a8;
+  --orange:#ef6a10;--orange2:#ff8c33;--orange-grad:linear-gradient(135deg,#ff8c33,#ef6a10);--wd-grad:linear-gradient(135deg,#ff8c33,#ef6a10);
+  --accent-soft:#fff1e6;--accent-line:#ffd3b3;--wd-bg:#fff1e6;--ok:#2f9e44;--danger:#d6451b;
+  --shadow:0 2px 10px rgba(31,33,37,.05);--shadow2:0 10px 30px rgba(31,33,37,.08);--p3-side:216px;
+  --font:'Plus Jakarta Sans','Noto Sans Thai',-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.btn.primary,.btn.primary.wd{background:var(--orange);box-shadow:0 6px 16px rgba(239,106,16,.26)}
+.inp:focus{border-color:var(--orange);box-shadow:0 0 0 4px rgba(239,106,16,.14)}
+.mnav .scanbtn,.cart-fab,.scan-fab{background:var(--orange);box-shadow:0 10px 24px rgba(239,106,16,.32)}
+
+/* ---- product cards ---- */
+.pcard.p3c{display:flex;flex-direction:column;text-align:left;border:1.5px solid transparent;border-radius:16px;padding:10px;background:#fff;box-shadow:var(--shadow);transition:border-color .15s,box-shadow .15s}
+.pcard.p3c:hover{box-shadow:var(--shadow2)}
+.pcard.p3c.in{border-color:var(--orange)}
+.pcard.p3c .img{position:relative;width:100%;aspect-ratio:4/3;border-radius:12px;background:var(--soft);overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--sub2);margin:0}
+.pcard.p3c .img img{width:100%;height:100%;object-fit:cover}
+.pcard.p3c .img svg.i{width:34px;height:34px}
+.pcard.p3c .p3-badge{position:absolute;top:8px;left:8px;background:#ffd23f;color:#1f2125;font-size:10.5px;font-weight:800;padding:3px 8px;border-radius:6px}
+.pcard.p3c .p3-badge.out{background:var(--danger);color:#fff}
+.pcard.p3c .fav{position:absolute;top:8px;right:8px;left:auto;background:#fff;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.08);padding:0}
+.pcard.p3c .fav svg.i{width:14px;height:14px;color:var(--orange)}
+.pcard.p3c .stk,.pcard.p3c .meta{display:none!important}
+.pcard.p3c .body{padding:10px 2px 0;display:flex;flex-direction:column;flex:1}
+.pcard.p3c .body::after{display:none}
+.pcard.p3c .nm{font-size:13.5px;font-weight:700;line-height:1.3;min-height:35px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;color:var(--text)}
+.p3-row{display:flex;align-items:center;justify-content:space-between;gap:6px;margin:6px 0 10px}
+.pcard.p3c .pr{color:var(--orange);font-weight:800;font-size:15px;margin:0}
+.p3-tag{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--sub);font-weight:600;white-space:nowrap}
+.p3-tag i{width:8px;height:8px;border-radius:2px;background:var(--ok);display:inline-block}
+.p3-tag.low i{background:var(--warn,#f59e0b)}.p3-tag.out i{background:var(--danger)}
+.p3-add{margin-top:auto;display:flex;align-items:center;justify-content:center;height:34px;border-radius:9px;background:var(--accent-soft);color:var(--orange);font-weight:700;font-size:12.5px}
+.p3-step{margin-top:auto;display:flex;align-items:center;justify-content:space-between;height:34px;padding:0 4px}
+.p3-step span{width:26px;height:26px;border-radius:50%;background:var(--orange);color:#fff;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800;line-height:1;cursor:pointer}
+.p3-step b{font-size:14px}
+
+/* ---- top row / categories / held bills ---- */
+.p3-top{display:flex;gap:12px;align-items:center;margin-bottom:16px}
+.p3-ic{width:44px;height:44px;flex:0 0 auto;border-radius:12px;border:0;background:#fff;box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;color:var(--text);padding:0}
+.p3-ic svg{width:20px;height:20px}
+.p3-ic.pay-scan{width:44px;height:44px;border-radius:12px;background:#fff;color:var(--text);box-shadow:var(--shadow)}
+.p3-ic.pay-scan.holding{background:var(--accent-soft);color:var(--orange)}
+.p3-search{flex:1;display:flex;align-items:center;gap:8px;background:#fff;border-radius:12px;padding:0 14px;height:44px;box-shadow:var(--shadow);min-width:0}
+.p3-search svg{width:18px;height:18px;color:var(--text);flex:0 0 auto}
+.p3-search .inp{border:0!important;box-shadow:none!important;min-height:0;height:42px;padding:0;background:transparent;font-size:13.5px}
+.p3 #posTabs{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:12px;padding:2px 2px 6px;margin:0 0 14px;scrollbar-width:none;background:transparent;box-shadow:none}
+.p3 #posTabs::-webkit-scrollbar{display:none}
+.p3 #posTabs::before{display:none}
+.p3 #posTabs button{flex:0 0 auto;min-width:112px;height:86px;padding:12px 14px;border-radius:14px;border:0;background:#fff;box-shadow:var(--shadow);display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-end;gap:1px;font-size:13px;font-weight:700;color:var(--text);text-align:left;position:relative}
+.p3 #posTabs button .ci{position:absolute;top:12px;left:14px;width:auto;height:auto;background:transparent;border-radius:0;color:var(--text);font-size:18px}
+.p3 #posTabs button .ci svg{width:24px;height:24px}
+.p3 #posTabs button small{font-size:10.5px;color:var(--sub2);font-weight:600}
+.p3 #posTabs button.on{background:var(--accent-soft);color:var(--text)}
+.p3 #posTabs button.on .ci{color:var(--orange)}
+.p3 .pgrid{grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:16px;align-content:start}
+.p3 .pgrid::before{display:none}
+.p3-holds{display:flex;gap:12px;overflow-x:auto;padding:12px 2px 2px;scrollbar-width:none;flex:0 0 auto}
+.p3-holds::-webkit-scrollbar{display:none}
+.p3-hold{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:7px 14px 7px 7px;border-radius:999px;border:1.5px solid var(--line);background:#fff;font-family:inherit;text-align:left;cursor:pointer;min-width:190px}
+.p3-hold:hover{border-color:var(--accent-line)}
+.p3-hold .av{width:38px;height:38px;border-radius:50%;background:#ffc94d;color:#1f2125;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex:0 0 auto}
+.p3-hold b{display:block;font-size:13px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.p3-hold small{display:flex;align-items:center;gap:4px;font-size:10.5px;color:var(--sub)}
+.p3-hold .pl{font-size:9.5px;font-weight:800;background:var(--accent-soft);color:var(--orange);padding:2px 7px;border-radius:999px;margin-left:auto}
+.p3-holds .none{font-size:12px;color:var(--sub2);padding:12px 4px}
+
+/* ---- bill panel ---- */
+.p3-bill-h{display:flex;align-items:center;gap:8px;padding:2px 0 16px;border-bottom:1px solid var(--line2);margin-bottom:16px}
+.p3-bill-h .t{flex:1;min-width:0}
+.p3-bill-h .t b{display:block;font-size:20px;font-weight:800;line-height:1.2}
+.p3-bill-h .t small{font-size:12px;color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.p3-bill-h .p3-ic{width:38px;height:38px;background:var(--soft);box-shadow:none}
+.p3-seg{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:5px;border-radius:12px;background:var(--soft);border:1px solid var(--line2);margin-bottom:14px}
+.p3-seg button{border:0;background:transparent;border-radius:9px;height:36px;font-size:12.5px;font-weight:700;color:var(--text);font-family:inherit}
+.p3-seg button.on{background:var(--accent-soft);color:var(--orange);box-shadow:0 0 0 1px var(--accent-line) inset}
+.p3-ci{display:flex;gap:12px;align-items:center;padding:10px;border:1px solid var(--line);border-radius:14px;margin-bottom:10px;background:#fff;cursor:pointer;width:100%;text-align:left;font-family:inherit}
+.p3-ci:hover{border-color:var(--accent-line)}
+.p3-ci .th{width:58px;height:58px;border-radius:10px;background:var(--soft);overflow:hidden;flex:0 0 auto;display:flex;align-items:center;justify-content:center;color:var(--sub2)}
+.p3-ci .th img{width:100%;height:100%;object-fit:cover}
+.p3-ci .th svg.i{width:24px;height:24px}
+.p3-ci .m{flex:1;min-width:0}
+.p3-ci .nm{font-size:13px;font-weight:700;line-height:1.3;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;color:var(--text)}
+.p3-ci .ln{display:flex;align-items:center;gap:14px;margin-top:6px;font-size:12px}
+.p3-ci .ln .u{color:var(--orange);font-weight:800}
+.p3-ci .ln .q{color:var(--sub);font-weight:700}
+.p3-ci .ln .lt{margin-left:auto;color:var(--orange);font-weight:800}
+.p3-ci .nt{font-size:11px;color:var(--sub);margin-top:2px}
+.p3-sum{background:var(--soft);border-radius:14px;padding:14px 16px;margin-bottom:14px}
+.p3-sum .trow{display:flex;justify-content:space-between;font-size:12.5px;color:var(--sub);padding:5px 0;border:0;margin:0}
+.p3-sum .trow.big{color:var(--text);font-size:16px;font-weight:800;border-top:1px dashed var(--line);margin-top:8px;padding-top:12px}
+.p3-sum .trow.big span:last-child{font-size:18px}
+.p3-pays{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.p3-pays button{border:0;background:transparent;display:flex;flex-direction:column;align-items:center;gap:7px;font-size:11.5px;font-weight:700;color:var(--text);font-family:inherit;padding:0}
+.p3-pays button span{width:100%;height:50px;border-radius:12px;border:1.5px solid var(--line);display:flex;align-items:center;justify-content:center;background:#fff;color:var(--text)}
+.p3-pays button span svg{width:22px;height:22px}
+.p3-pays button.on span{background:var(--accent-soft);border-color:var(--accent-line);color:var(--orange)}
+.p3-place{width:100%;height:52px;border:0;border-radius:12px;background:var(--orange);color:#fff;font-size:15px;font-weight:800;font-family:inherit;box-shadow:0 8px 18px rgba(239,106,16,.28)}
+.p3-place:disabled{opacity:.45;box-shadow:none;cursor:not-allowed}
+.p3-empty{text-align:center;color:var(--sub2);padding:40px 10px;font-size:13px}
+.p3-empty svg{width:40px;height:40px;display:block;margin:0 auto 10px;color:var(--line)}
+/* the same cards inside the phone's full-screen cart */
+.cart-overlay .cart-body{padding:12px}.cart-overlay .cart-f{padding:12px}
+
+/* ---- desktop shell: white sidebar | page ---- */
+@media(min-width:821px){
+  html,body{background:var(--bg)}
+  #app{display:grid!important;grid-template-columns:var(--p3-side) minmax(0,1fr)!important;grid-template-rows:minmax(0,1fr)!important;height:calc(100dvh - 32px);margin:16px;background:#fff;border-radius:24px;box-shadow:var(--shadow2);overflow:hidden}
+  body.p3-mini{--p3-side:84px}
+  #app .topbar{grid-area:1/1;display:grid!important;grid-template-columns:44px minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto auto auto;grid-template-areas:"lg ttl" "nav nav" "tools tools" "who who" "out out";
+    gap:0 10px;padding:22px 14px 18px;background:#fff;border-right:1px solid var(--line);min-height:0;align-content:stretch}
+  #app .topbar .lg{grid-area:lg;width:44px;height:44px;border-radius:12px;box-shadow:none;background:var(--soft);align-self:center;justify-self:start}
+  #app .topbar .ttl{grid-area:ttl;align-self:center;padding:0;font-size:14px;font-weight:800;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  #app .topbar .ttl small{font-size:10.5px}
+  #app .nav{grid-area:nav;display:flex!important;flex-direction:column;align-items:stretch;gap:4px;padding:26px 0 12px;background:transparent;border:0;box-shadow:none;overflow-y:auto;overflow-x:hidden;min-height:0}
+  #app .nav button{width:100%;min-height:42px;height:auto;flex-direction:row;justify-content:flex-start;gap:12px;padding:9px 14px;border-radius:12px;font-size:13px;font-weight:600;color:var(--text);text-align:left;white-space:nowrap}
+  #app .nav button svg.i{width:19px;height:19px;color:var(--sub);flex:0 0 auto}
+  #app .nav button:hover{background:var(--soft)}
+  #app .nav button.on{background:var(--orange);color:#fff;box-shadow:0 6px 14px rgba(239,106,16,.28)}
+  #app .nav button.on svg.i{color:#fff}
+  #app .topbar-sync{grid-area:tools;justify-self:start;width:38px;height:38px;margin:0;border:1px solid var(--line);background:#fff;box-shadow:none;border-radius:10px}
+  #app .langsw{grid-area:tools;justify-self:end;align-self:center;margin:0;background:var(--soft);box-shadow:none}
+  #app .topbar .who{grid-area:who;margin:12px 0 0;display:flex}
+  #app .topbar .who .av{width:auto;height:auto;flex:1;display:flex;align-items:center;gap:9px;padding:5px 12px 5px 5px;border-radius:999px;border:1.5px solid var(--line);background:#fff;color:var(--text);font-size:12px;font-weight:700;box-shadow:none;justify-content:flex-start;min-width:0}
+  #app .topbar .who .av i{font-style:normal;width:30px;height:30px;border-radius:50%;background:var(--accent-soft);color:var(--orange);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex:0 0 auto}
+  #app .topbar .who .av em{font-style:normal;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #app .topbar .acct-menu{top:auto;bottom:52px;left:0;right:auto}
+  #app .p3-out{grid-area:out;display:flex;align-items:center;gap:12px;margin-top:14px;padding:9px 14px;border:0;background:transparent;color:var(--text);font-size:13px;font-weight:600;font-family:inherit;border-radius:12px}
+  #app .p3-out:hover{background:var(--soft)}
+  #app .p3-out svg{width:19px;height:19px;color:var(--sub)}
+  /* collapsed sidebar (☰) */
+  body.p3-mini #app .topbar{grid-template-columns:1fr;grid-template-areas:"lg" "nav" "tools" "who" "out";padding:22px 10px 18px}
+  body.p3-mini #app .topbar .ttl,body.p3-mini #app .nav button span,body.p3-mini #app .topbar .who .av em,body.p3-mini #app .p3-out span,body.p3-mini #app .langsw{display:none}
+  body.p3-mini #app .topbar .lg{justify-self:center}
+  body.p3-mini #app .nav button{justify-content:center;padding:10px 0}
+  body.p3-mini #app .topbar-sync{justify-self:center}
+  body.p3-mini #app .topbar .who .av{justify-content:center;padding:4px;border:0}
+  body.p3-mini #app .p3-out{justify-content:center;padding:9px 0}
+  #app .view{grid-area:1/2!important;margin:0;border:0;border-radius:0;box-shadow:none;background:var(--canvas);padding:22px 24px;min-height:0;overflow:auto}
+  #app .view.p3v{padding:0;overflow:hidden}
+  .p3.pos{display:grid;grid-template-columns:minmax(0,1fr) 372px;gap:0;height:100%}
+  .p3 .pos-left{padding:20px 22px 16px;min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+  .p3 .pgrid{flex:1;overflow-y:auto;max-height:none;padding:2px 2px 6px;margin:0 -2px}
+  .p3 .pos-right{background:#fff;border-left:1px solid var(--line);padding:22px 20px 18px;min-height:0;display:flex}
+  .p3 .pos-right .cart{height:100%!important;flex:1;border:0;box-shadow:none;border-radius:0;background:transparent;display:flex;flex-direction:column;min-height:0;padding:0}
+  .p3 .pos-right .cart-body{flex:1;overflow-y:auto;min-height:0;padding:0 2px}
+  .p3 .pos-right .cart-f{border:0;padding:14px 0 0}
+  .p3-ic.p3-ham{display:flex}
+}
+@media(max-width:820px){
+  .p3-out,.p3-ham{display:none!important}
+  .p3 .pos-right{display:none}
+  .p3-top{margin-bottom:10px}
+  .p3 #posTabs button{min-width:96px;height:76px}
+  .p3 .pgrid{grid-template-columns:repeat(2,1fr);gap:10px}
+  .pcard.p3c .nm{font-size:12.5px;min-height:33px}
+  .p3-row{flex-direction:column;align-items:flex-start;gap:2px;margin:4px 0 8px}
+  .p3-tag{white-space:normal}
+  .topbar .who .av em{display:none}.topbar .who .av i{font-style:normal}
+}
+</style>
+<script id="pos-v3-ui">
+/* POS v3 — the screens above: replaces the sell screen, product cards and cart markup. Data and actions are the existing ones
+   (addToCart / cQty / cDisc / cPrice / cNote / cDel / pickCustomer / billDiscount / applyPromo / holdBill / resumeBill / openPayment). */
+(function(){
+"use strict";
+var SV={
+  menu:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>',
+  search:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.6" y2="16.6"/></svg>',
+  scan:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><line x1="7" y1="12" x2="17" y2="12"/></svg>',
+  edit:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+  dots:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>',
+  out:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
+  arrow:'<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/></svg>'
+};
+var TYPES=[["store","หน้าร้าน","In store"],["take","สั่งกลับบ้าน","Take away"],["delivery","จัดส่ง","Delivery"]];
+window.P3_TYPE=window.P3_TYPE||"store";
+/* the withdraw screen uses the same cards — its counts / steppers work on the withdraw list, not the sales cart */
+var curList=function(){ return VIEW==="withdraw"?WD_CART:CART; };
+var lineOf=function(code){ return curList().find(function(l){ return l.code===code; }); };
+var inCart=function(code){ return curList().filter(function(l){ return l.code===code; }).reduce(function(a,l){ return a+(parseInt(l.qty,10)||0); },0); };
+var thumb=function(it){ return it&&it.img?'<img src="'+esc(imgUrl(it.img))+'" alt="" onerror="this.style.display=\'none\'">':IC.box; };
+
+/* ── sidebar extras: name on the account chip, logout, ☰ ── */
+function shell(){ var tb=document.querySelector("#app .topbar"); if(!tb) return;
+  if(!tb.querySelector(".p3-out")){ var b=document.createElement("button"); b.className="p3-out"; b.type="button"; b.onclick=function(){ logout(); };
+    b.innerHTML=SV.out+"<span></span>"; tb.appendChild(b); }
+  tb.querySelector(".p3-out span").textContent=T("ออกจากระบบ","Logout");
+  var av=document.getElementById("uAv"), n=whoName()||"U";
+  if(av) av.innerHTML="<i>"+esc(n.replace(/\s+/g," ").split(" ").map(function(w){ return w.charAt(0); }).join("").slice(0,2).toUpperCase())+"</i><em>"+esc(n)+"</em>";
+  try{ if(localStorage.getItem("pos_p3_mini")==="1") document.body.classList.add("p3-mini"); }catch(e){} }
+window.p3Mini=function(){ var on=document.body.classList.toggle("p3-mini"); try{ localStorage.setItem("pos_p3_mini",on?"1":"0"); }catch(e){} };
+
+/* ── sell screen ── */
+vPOS=function(){
+  return '<div class="pos p3">'
+   +'<div class="pos-left">'
+     +'<div class="p3-top"><button class="p3-ic p3-ham" onclick="p3Mini()" title="'+esc(T("ย่อ / ขยายเมนู","Collapse menu"))+'">'+SV.menu+'</button>'
+       +'<label class="p3-search">'+SV.search+'<input id="scan" class="inp" placeholder="'+esc(T("ค้นหาสินค้า หรือสแกนบาร์โค้ด…","Search product or scan a barcode…"))+'" autocomplete="off" oninput="p3Find(this.value)"></label>'
+       +'<button class="p3-ic pay-scan" title="'+esc(T("กดค้างเพื่อสแกน","Hold to scan"))+'">'+SV.scan+'</button></div>'
+     +'<div class="tabs" id="posTabs"></div>'
+     +'<div class="pgrid" id="pgrid">'+productCards("")+'</div>'
+     +'<div id="pgridPager"></div>'
+     +'<div class="p3-holds" id="p3Holds">'+holdsHtml()+'</div>'
+   +'</div>'
+   +'<div class="pos-right"><div class="cart">'
+     +'<div class="p3-bill-h" id="p3BillH">'+billHead()+'</div>'
+     +'<div class="p3-seg" id="p3Seg">'+segHtml()+'</div>'
+     +'<div class="cart-body" id="cartBody">'+cartHtml()+'</div>'
+     +'<div class="cart-f" id="cartFoot">'+cartFoot()+'</div>'
+   +'</div></div></div>'; };
+/* filters while typing — reads the box when it fires, so a scan that added + cleared it meanwhile leaves the full list */
+var _f=null; window.p3Find=function(){ clearTimeout(_f); _f=setTimeout(function(){ var s=document.getElementById("scan"), g=document.getElementById("pgrid"); if(!g||!s) return;
+  POS_PAGE=1; g.innerHTML=productCards(s.value); bindPcardLongPress(); renderPosPager(); },160); };
+function billHead(){ var c=CUR_CUSTOMER;
+  return '<div class="t"><b>'+esc(T("บิลขาย","Sales bill"))+'</b><small>'+esc(c?c.name:T("ลูกค้าทั่วไป","Walk-in customer"))+(CART.length?" · "+cartCount()+" "+T("ชิ้น","pcs"):"")+'</small></div>'
+   +'<button class="p3-ic" onclick="pickCustomer()" title="'+esc(T("เลือกลูกค้า","Customer"))+'">'+SV.edit+'</button>'
+   +'<button class="p3-ic" onclick="p3More()" title="'+esc(T("ตัวเลือกบิล","Bill options"))+'">'+SV.dots+'</button>'; }
+function segHtml(){ return TYPES.map(function(t){ return '<button class="'+(window.P3_TYPE===t[0]?"on":"")+'" onclick="p3Type(\''+t[0]+'\')">'+esc(T(t[1],t[2]))+'</button>'; }).join(""); }
+window.p3Type=function(t){ window.P3_TYPE=t; var s=document.getElementById("p3Seg"); if(s) s.innerHTML=segHtml(); };
+function holdsHtml(){ var hs=(DB&&DB.sales||[]).filter(function(s){ return s.status==="Hold"; });
+  if(!hs.length) return '<div class="none">'+esc(T("ยังไม่มีบิลที่พักไว้ — กด ⋯ ในบิลเพื่อพักบิล","No held bills — use ⋯ on the bill to hold one"))+'</div>';
+  return hs.map(function(h,i){ var n=(h.lines||[]).reduce(function(a,l){ return a+(parseInt(l.qty,10)||0); },0);
+    return '<button class="p3-hold" onclick="resumeBill('+jsa(h.id)+')"><span class="av">B'+(i+1)+'</span><span style="min-width:0"><b>'+esc(h.customerName||h.ref)+'</b>'
+      +'<small>'+n+" "+esc(T("ชิ้น","items"))+" "+SV.arrow+" ฿"+money(h.total)+'</small></span><span class="pl">'+esc(T("พักไว้","Held"))+'</span></button>'; }).join(""); }
+window.p3More=function(){
+  modal(T("ตัวเลือกบิล","Bill options"),'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
+    +'<button class="btn ghost" onclick="closeModal();billDiscount()">'+esc(T("ส่วนลดบิล","Bill discount"))+'</button>'
+    +'<button class="btn ghost" onclick="closeModal();applyPromo()">'+esc(T("โปรโมชั่น","Promotion"))+'</button>'
+    +'<button class="btn ghost" onclick="closeModal();holdBill()"'+(CART.length?"":" disabled")+'>'+esc(T("พักบิลนี้","Hold this bill"))+'</button>'
+    +'<button class="btn ghost" onclick="closeModal();resumeBillList()">'+esc(T("เรียกบิลที่พัก","Resume a held bill"))+'</button>'
+    +'<button class="btn ghost danger" style="grid-column:1/-1" onclick="closeModal();clearCart()">'+esc(T("ล้างตะกร้า","Clear cart"))+'</button></div>',
+    [{t:T("ปิด","Close"),c:"ghost",fn:closeModal}]); };
+
+/* ── product cards ── */
+var _pcOrig=productCards;
+productCards=function(q){ var html=_pcOrig.apply(this,arguments);
+  if(html.indexOf('class="pcard"')<0) return html;                        // "no items" message
+  var tmp=document.createElement("div"); tmp.innerHTML=html; var fav=favSet();
+  return [].map.call(tmp.querySelectorAll(".pcard"),function(el){ var code=el.getAttribute("data-code"), it=itemByCode(code)||{}, st=stockTotal(code), n=inCart(code);
+    var low=st>0&&st<=5, badge=st<=0?'<span class="p3-badge out">'+esc(T("หมด","Out"))+'</span>':(low?'<span class="p3-badge">'+esc(T("เหลือน้อย","Low"))+'</span>':"");
+    return '<button class="pcard p3c'+(n?" in":"")+'" data-code="'+esc(code)+'"><div class="img">'+thumb(it)+badge
+      +'<span class="fav" onpointerdown="event.stopPropagation()" onpointerup="event.stopPropagation()" onclick="event.stopPropagation();toggleFav('+jsa(code)+')">'+(fav.includes(code)?IC.star:IC.starO)+'</span></div>'
+      +'<div class="body"><div class="nm">'+esc(it.name||code)+'</div><div class="meta"></div>'
+      +'<div class="p3-row"><span class="pr">฿'+money(priceOf(it))+'</span><span class="p3-tag'+(st<=0?" out":(low?" low":""))+'"><i></i>'+esc(T("คงเหลือ","Stock"))+" "+(Number(st)||0).toLocaleString()+(it.unit?" "+esc(it.unit):"")+'</span></div>'
+      +(n?'<div class="p3-step" onpointerdown="event.stopPropagation()" onpointerup="event.stopPropagation()" onclick="event.stopPropagation()"><span onclick="p3Step('+jsa(code)+',-1)">−</span><b>'+n+'</b><span onclick="p3Step('+jsa(code)+',1)">+</span></div>'
+          :'<span class="p3-add">'+esc(VIEW==="withdraw"?T("เพิ่มรายการเบิก","Add to withdrawal"):T("เพิ่มลงตะกร้า","Add to cart"))+'</span>')
+      +'</div></button>'; }).join(""); };
+window.p3Step=function(code,d){ var L=curList(), l=lineOf(code); if(!l){ if(d>0) addToCart(code); return; }
+  var q=(parseInt(l.qty,10)||0)+d; if(q<=0) L.splice(L.indexOf(l),1); else l.qty=q;
+  if(L===WD_CART) wdRefreshCart(); else refreshCart(); };
+
+/* ── cart (bill) ── */
+cartHtml=function(){
+  if(!CART.length) return '<div class="p3-empty">'+IC.cart+esc(T("ยังไม่มีสินค้าในบิล","No items yet"))+'<br>'+esc(T("แตะสินค้าทางซ้ายหรือสแกนบาร์โค้ด","Tap a product or scan a barcode"))+'</div>';
+  return CART.map(function(l,i){ var it=itemByCode(l.code)||{};
+    return '<button class="p3-ci" onclick="p3Line('+i+')"><span class="th">'+thumb(it)+'</span><span class="m"><span class="nm">'+esc(l.name)+'</span>'
+      +(l.note?'<span class="nt">'+IC.note+" "+esc(l.note)+'</span>':"")
+      +'<span class="ln"><span class="u">฿'+money(l.price)+'</span><span class="q">'+l.qty+((l.mult||1)>1?' '+esc(l.unit||''):'')+'X</span>'+(l.disc?'<span class="q">−฿'+money(l.disc)+'</span>':"")+'<span class="lt">฿'+money(lineTotal(l))+'</span></span></span></button>'; }).join(""); };
+window.p3Line=function(i){ var l=CART[i]; if(!l) return;
+  modal(l.name,unitBtns(CART,i)+'<div style="display:flex;align-items:center;justify-content:center;gap:18px;margin:4px 0 16px">'
+      +'<button class="btn ghost" style="width:46px;height:46px;font-size:22px" onclick="cQty('+i+',-1);closeModal();p3Line('+i+')">−</button>'
+      +'<b style="font-size:26px;min-width:40px;text-align:center">'+l.qty+'</b>'
+      +'<button class="btn primary" style="width:46px;height:46px;font-size:22px" onclick="cQty('+i+',1);closeModal();p3Line('+i+')">+</button></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
+      +'<button class="btn ghost" onclick="closeModal();cDisc('+i+')">'+esc(T("ส่วนลด","Discount"))+(l.disc?" ฿"+money(l.disc):"")+'</button>'
+      +'<button class="btn ghost" onclick="closeModal();cPrice('+i+')">'+esc(T("เปลี่ยนราคา","Change price"))+'</button>'
+      +'<button class="btn ghost" onclick="closeModal();cNote('+i+')">'+esc(T("หมายเหตุ","Note"))+'</button>'
+      +'<button class="btn ghost danger" onclick="closeModal();cDel('+i+')">'+esc(T("ลบรายการ","Remove"))+'</button></div>',
+    [{t:T("เสร็จ","Done"),c:"primary",fn:closeModal}]); };
+cartFoot=function(){
+  var st=cartSubtotal(),bd=billDiscAmt(),md=memberDiscAmt(),pd=promoDiscAmt(),vat=cartVatAmt(),tot=cartTotal();
+  var row=function(a,b){ return '<div class="trow"><span>'+a+'</span><span>'+b+'</span></div>'; };
+  var cfg=(posCfg().methods)||{}, ms=[["cash","เงินสด","Cash",IC.cash],["card","บัตรเครดิต/เดบิต","Credit/Debit Card",IC.card],["promptpay","QR Code","QR Code",IC.qr]].filter(function(m){ return cfg[m[0]]!==false; });
+  window._posPrefMethod=window._posPrefMethod||"cash";
+  return '<div class="p3-sum">'+row(esc(T("ยอดรวม","Sub Total")),"฿"+money(st))
+      +(bd?row(esc(T("ส่วนลดบิล","Bill discount")),"−฿"+money(bd)):"")+(md?row(esc(T("ส่วนลดสมาชิก","Member discount")),"−฿"+money(md)):"")
+      +(pd?row(esc(T("โปรโมชั่น","Promotion"))+" "+esc((CUR_PROMO&&CUR_PROMO.name)||""),"−฿"+money(pd)):"")
+      +(vat?row("VAT "+esc(posCfg().vatRate||0)+"%","฿"+money(vat)):"")
+      +'<div class="trow big"><span>'+esc(T("ยอดชำระ","Total Amount"))+'</span><span>฿'+money(tot)+'</span></div></div>'
+    +'<div class="p3-pays">'+ms.map(function(m){ return '<button type="button" class="'+(window._posPrefMethod===m[0]?"on":"")+'" onclick="posPrefMethod(\''+m[0]+'\',this)"><span>'+m[3]+'</span>'+esc(T(m[1],m[2]))+'</button>'; }).join("")+'</div>'
+    +'<button class="p3-place" '+(CART.length?"":"disabled")+' onclick="openPayment()">'+esc(T("ชำระเงิน","Place Order"))+(CART.length?" · ฿"+money(tot):"")+'</button>'; };
+
+/* category cards: a picture icon instead of the first letter (the same icon for the same category name) */
+var CATIC=[
+  '<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>',
+  '<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 8h1a4 4 0 0 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><line x1="6" y1="2" x2="6" y2="4"/><line x1="10" y1="2" x2="10" y2="4"/><line x1="14" y1="2" x2="14" y2="4"/></svg>',
+  '<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11h18a9 9 0 0 1-18 0Z"/><path d="M8 7c0-1.5 1-2 1-3.5M12 7c0-1.5 1-2 1-3.5M16 7c0-1.5 1-2 1-3.5"/></svg>',
+  '<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>',
+  '<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>',
+  '<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.5 19 2c1 2 2 4.2 2 8 0 5.5-4.8 10-10 10Z"/><path d="M2 21c0-3 1.9-5.4 5.1-6"/></svg>'];
+function catIcons(){ var t=document.querySelector(".p3 #posTabs"); if(!t) return;
+  t.querySelectorAll("button").forEach(function(b){ var c=b.dataset.cat, ci=b.querySelector(".ci"); if(!ci||c==="all"||c==="fav"||!ci.querySelector("b")) return;
+    var h=0; for(var i=0;i<c.length;i++) h=(h*31+c.charCodeAt(i))>>>0; ci.innerHTML=CATIC[h%CATIC.length]; }); }
+var _pt=posTab; posTab=function(){ var r=_pt.apply(this,arguments); try{ catIcons(); }catch(e){} return r; };
+
+/* everything that changes the bill also refreshes the cards, the header and the held-bill bar */
+var _rc=refreshCart; refreshCart=function(){ _rc.apply(this,arguments); try{
+  var g=document.getElementById("pgrid"); if(g&&VIEW==="pos"){ var top=g.scrollTop; g.innerHTML=productCards((document.getElementById("scan")||{}).value||""); g.scrollTop=top; bindPcardLongPress(); }
+  var h=document.getElementById("p3BillH"); if(h) h.innerHTML=billHead();
+  var hb=document.getElementById("p3Holds"); if(hb) hb.innerHTML=holdsHtml(); }catch(e){} };
+var _wrc=wdRefreshCart; wdRefreshCart=function(){ _wrc.apply(this,arguments); try{
+  var g=document.getElementById("pgrid"); if(g&&VIEW==="withdraw"){ var top=g.scrollTop; g.innerHTML=productCards((document.getElementById("scan")||{}).value||""); g.scrollTop=top; bindPcardLongPress(); } }catch(e){} };
+/* the order type travels with a held bill and comes back with it; a finished sale starts the next bill "in store" */
+var _hb=holdBill; holdBill=function(){ var t=window.P3_TYPE, n=(DB.sales||[]).length; var r=_hb.apply(this,arguments);
+  try{ var s=(DB.sales||[])[n]; if(s&&s.status==="Hold") s.orderType=t; window.P3_TYPE="store"; var sg=document.getElementById("p3Seg"); if(sg) sg.innerHTML=segHtml(); }catch(e){} return r; };
+var _rb=resumeBill; resumeBill=function(id){ var h=(DB.sales||[]).find(function(s){ return s.id===id; }), t=h&&h.orderType; var r=_rb.apply(this,arguments);
+  try{ if(t&&!(DB.sales||[]).some(function(s){ return s.id===id; })){ window.P3_TYPE=t; var sg=document.getElementById("p3Seg"); if(sg) sg.innerHTML=segHtml(); } }catch(e){} return r; };
+var _cs=completeSale; completeSale=function(){ var r=_cs.apply(this,arguments); if(r!==false){ window.P3_TYPE="store"; var sg=document.getElementById("p3Seg"); if(sg) sg.innerHTML=segHtml(); } return r; };
+var _render=render; render=function(){ _render.apply(this,arguments); try{ shell(); catIcons(); var v=document.getElementById("view"); if(v) v.classList.toggle("p3v",VIEW==="pos"); }catch(e){} };
+var _setLang=window.setLang; if(typeof _setLang==="function") setLang=function(){ var r=_setLang.apply(this,arguments); try{ shell(); }catch(e){} return r; };
+try{ shell(); }catch(e){}
+})();
+</script>
 <script id="update-notifier">
 /* ═══ Software update notice ═══
    Every 2 minutes (and when the tab comes back) it checks two fingerprints:
@@ -3381,14 +3730,26 @@ try{ paintAll(); }catch(e){}
 })();
 </script>
 <script id="thai-font">
-/* Thai font chosen for the company (settings.font) — the same five choices in web, mobile and POS.
+/* Thai font chosen for the company (settings.font) — the same choices (THAI_FONTS) in web, mobile and POS.
    No choice = each app keeps its own default font. */
 var THAI_FONTS=[
   {k:"noto",   n:"Noto Sans Thai",     css:"Noto+Sans+Thai:wght@400;500;600;700;800"},
   {k:"sarabun",n:"Sarabun",            css:"Sarabun:wght@400;500;600;700;800"},
   {k:"prompt", n:"Prompt",             css:"Prompt:wght@400;500;600;700;800"},
   {k:"kanit",  n:"Kanit",              css:"Kanit:wght@400;500;600;700;800"},
-  {k:"plex",   n:"IBM Plex Sans Thai", css:"IBM+Plex+Sans+Thai:wght@400;500;600;700"}
+  {k:"plex",   n:"IBM Plex Sans Thai", css:"IBM+Plex+Sans+Thai:wght@400;500;600;700"},
+  {k:"plexl",   n:"IBM Plex Sans Thai Looped", css:"IBM+Plex+Sans+Thai+Looped:wght@400;500;600;700"},
+  {k:"notol",   n:"Noto Sans Thai Looped", css:"Noto+Sans+Thai+Looped:wght@400;500;600;700"},
+  {k:"anuphan", n:"Anuphan", css:"Anuphan:wght@400;500;600;700"},
+  {k:"mitr",    n:"Mitr", css:"Mitr:wght@400;500;600;700"},
+  {k:"chakra",  n:"Chakra Petch", css:"Chakra+Petch:wght@400;500;600;700"},
+  {k:"bai",     n:"Bai Jamjuree", css:"Bai+Jamjuree:wght@400;500;600;700"},
+  {k:"k2d",     n:"K2D", css:"K2D:wght@400;500;600;700"},
+  {k:"niramit", n:"Niramit", css:"Niramit:wght@400;500;600;700"},
+  {k:"krub",    n:"Krub", css:"Krub:wght@400;500;600;700"},
+  {k:"athiti",  n:"Athiti", css:"Athiti:wght@400;500;600;700"},
+  {k:"pridi",   n:"Pridi", css:"Pridi:wght@400;500;600;700"},
+  {k:"trirong", n:"Trirong", css:"Trirong:wght@400;500;600;700"}
 ];
 function thaiFontOf(k){ for(var i=0;i<THAI_FONTS.length;i++) if(THAI_FONTS[i].k===k) return THAI_FONTS[i]; return null; }
 function thaiFontFamily(f){ return "'"+f.n+"','Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"; }
@@ -3411,5 +3772,317 @@ try{ var _fc=(typeof CID!=="undefined"&&CID)||(typeof session!=="undefined"&&ses
   if(_fc&&typeof META!=="undefined"&&META&&META.settings) applyThaiFont(((META.settings[_fc]||{}).pos||{}).font||(META.settings[_fc]||{}).font); }catch(e){}
 /* sign-in screen: the cached POS look (font / colour / name) before anyone signs in */
 try{ if(typeof applyBrandP==="function") applyBrandP(); }catch(e){}
+</script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style id="fusion-theme">
+/* ═══ FUSION THEME (POS) — same look as index.html: grey canvas, white 24px cards, charcoal pills, flat orange.
+   Delete this block (and the Manrope <link> above) to go back. ═══ */
+:root{--bg:#f0f0ef;--canvas:#f0f0ef;--card:#ffffff;--panel:#ffffff;--soft:#f5f5f4;--soft2:#fafaf9;--line:#ebebea;--line2:#f2f2f1;
+  --text:#2f2a27;--ink:#2f2a27;--ink2:#3d3633;--sub:#7a7572;--sub2:#a5a09d;
+  --orange:#f47a33;--orange2:#f8924f;--orange-grad:linear-gradient(135deg,#f88b48,#f47a33);--wd-grad:linear-gradient(135deg,#f88b48,#f47a33);
+  --accent-soft:#fff1e8;--accent-line:#fdd3ba;--wd-bg:#fff1e8;--ok:#2fb35f;--danger:#ef3b5d;
+  --shadow:0 1px 2px rgba(47,42,39,.03);--shadow2:0 14px 30px rgba(47,42,39,.08);
+  --font:'Manrope','Noto Sans Thai',-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body{font-family:var(--font)}
+.btn{border-radius:999px}
+.btn.primary,.btn.primary.wd{background:var(--orange);box-shadow:none}
+.inp{border-radius:14px}
+.inp:focus{border-color:var(--orange);box-shadow:0 0 0 4px rgba(244,122,51,.12)}
+.mnav .scanbtn,.cart-fab,.scan-fab{background:var(--orange);box-shadow:0 10px 24px rgba(244,122,51,.3)}
+/* product cards & categories */
+.pcard.p3c{border-radius:24px;padding:10px;box-shadow:var(--shadow)}
+.pcard.p3c .img{border-radius:18px}
+.pcard.p3c .pr{font-weight:700}
+.p3-add{border-radius:999px}
+.p3-step span{background:var(--ink)}
+.p3-ic,.p3-ic.pay-scan{border-radius:999px}
+.p3-search{border-radius:999px}
+.p3 #posTabs button{border-radius:22px}
+.p3 #posTabs button.on{background:var(--ink);color:#fff}
+.p3 #posTabs button.on .ci{color:var(--orange)}
+.p3 #posTabs button.on small{color:rgba(255,255,255,.7)}
+/* bill panel */
+.p3-bill-h .t b{font-weight:600;letter-spacing:-.4px}
+.p3-seg{border-radius:999px;border:0}
+.p3-seg button{border-radius:999px}
+.p3-seg button.on{background:var(--ink);color:#fff;box-shadow:none}
+.p3-ci{border:0;border-radius:18px;background:var(--soft)}
+.p3-sum{border-radius:20px}
+.p3-pays button span{border-radius:16px}
+.p3-pays button.on span{background:var(--ink);border-color:var(--ink);color:#fff}
+.p3-place{border-radius:999px;background:var(--orange);box-shadow:none}
+.p3-place:not(:disabled):hover{background:#ec6c22}
+.langsw button.on{background:var(--ink)!important;color:#fff!important;box-shadow:none!important}
+/* desktop shell: floating white sidebar, charcoal active pill */
+@media(min-width:821px){
+  #app{background:transparent!important;box-shadow:none!important;gap:14px}
+  #app .topbar{border-right:0!important;border-radius:28px}
+  #app .topbar .lg{border-radius:999px}
+  #app .nav button{border-radius:999px}
+  #app .nav button.on{background:var(--ink);box-shadow:none}
+  #app .nav button.on svg.i{color:var(--orange)}
+  #app .topbar-sync{border-radius:999px;border:0;background:var(--soft)}
+  #app .p3-out{border-radius:999px}
+  #app .view{background:var(--canvas)!important;border-radius:28px!important}
+  .p3 .pos-right{border-left:0!important;border-radius:28px;margin:0 0 0 14px}
+}
+</style>
+<style id="addons-p-css">
+.adp{display:flex;flex-direction:column;gap:14px;padding:4px}
+.adp-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+.adp-kpi div{background:var(--card);border-radius:20px;padding:14px 16px}.adp-kpi small{color:var(--sub);font-weight:700;font-size:12px}.adp-kpi b{display:block;font-size:26px;font-weight:600;letter-spacing:-1px;margin-top:2px}
+.adp-card{background:var(--card);border-radius:20px;padding:16px 18px}.adp-card h3{margin:0 0 10px;font-size:15px}
+.adp-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.adp-row{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line2);font-size:13px}
+.adp-row small{color:var(--sub)}
+#isoAskP{position:fixed;inset:0;z-index:9500;display:none;align-items:center;justify-content:center;background:rgba(20,18,16,.5);padding:16px}
+#isoAskP.open{display:flex}#isoAskP .b{background:var(--card);color:var(--text);border-radius:22px;padding:18px 20px;width:min(440px,100%)}
+</style>
+<script id="addons-p">
+/* ═══ ADD-ONS in the POS — same switches and records as the web (DB.settings.addons, DB.addonRecords) ═══
+   Switched on / off only on the web (Settings → Add-ons, Super Admin). While off, the POS is unchanged.
+   ISO : side menu "ISO": report a problem (NCR, e.g. a customer complaint), recent NCRs, documents in force;
+         if the rule is on, a reason is asked before a refund / return and before saving a stock count.
+   ERP : side menu "ERP" (manager and up): export POS sales (one row per line) as CSV for the date range,
+         or only the sales not exported yet (marker shared with the web: settings.erp.lastSaleId). */
+(function(){
+"use strict";
+function CS(){ try{ return settings(); }catch(e){ return {}; } }
+function on(k){ try{ var s=CS(); return !!(s.addons&&s.addons[k]); }catch(e){ return false; } }
+function ruleOn(k){ var a=CS().addons||{}; return on("iso")&&!(a.isoRules&&a.isoRules[k]===false); }
+function recs(){ if(!Array.isArray(DB.addonRecords)) DB.addonRecords=[]; return DB.addonRecords; }
+try{ POS_MERGE.addonRecords="id"; }catch(e){}
+function byKind(k){ return recs().filter(function(r){return r.kind===k;}); }
+function rid(p){ return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5); }
+function g(id){ return ((document.getElementById(id)||{}).value||"").trim(); }
+function num(n){ return (parseFloat(n)||0).toLocaleString("en-US",{maximumFractionDigits:2}); }
+function nm(arr,k){ var x=arr.find(function(a){return a[0]===k;}); return x?x[1]:k; }
+var SEV=[["MINOR",T("เล็กน้อย","Minor")],["MAJOR",T("ร้ายแรง","Major")],["CRITICAL",T("วิกฤต","Critical")]];
+var SRC=[["CUST",T("ลูกค้าร้องเรียน / รับคืน","Customer complaint / return")],["STOCK",T("ในร้าน / ชั้นวาง","On the shelf")],["RECV",T("รับสินค้า","Receiving")],["SUPP",T("ผู้จำหน่าย","Supplier")]];
+var NST=[["OPEN",T("เปิด","Open")],["ACTION",T("กำลังแก้ไข","In action")],["VERIFY",T("รอทวนสอบ","To verify")],["CLOSED",T("ปิดแล้ว","Closed")]];
+var REASONS=[T("ลูกค้าเปลี่ยนใจ","Customer changed mind"),T("สินค้าชำรุด / เสียหาย","Defective / damaged"),T("ขายผิดรายการ","Wrong item sold"),T("ตรวจนับพบผลต่าง","Count difference"),T("สินค้าสูญหาย","Lost"),T("บันทึกผิดพลาด","Entry error"),T("อื่น ๆ","Other")];
+function seqNo(){ var ym=today().slice(0,7).replace("-",""), pre="NCR-"+ym+"-", n=0;
+  byKind("NCR").forEach(function(r){ var s=String(r.no||""); if(s.indexOf(pre)===0){ var v=parseInt(s.slice(pre.length),10)||0; if(v>n) n=v; } }); return pre+String(n+1).padStart(3,"0"); }
+
+/* side menu entries, kept in step with the switches on every redraw */
+var ADD=[["iso","ISO","ISO"],["erp","ERP","ERP"]];
+var ADD_IC={iso:'<path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/>',erp:'<path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 21v-5h5"/><path d="M21 3v5h-5"/>'};
+function paintAddIcons(){ Object.keys(ADD_IC).forEach(function(k){ var b=document.querySelector('#nav button[onclick="go(\x27'+k+'\x27)"]'); if(!b||b.dataset.adic) return; var old=b.querySelector("svg"); var ic='<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+ADD_IC[k]+'</svg>'; if(old) old.outerHTML=ic; else b.insertAdjacentHTML("afterbegin",ic); b.dataset.adic="1"; }); }
+function syncNav(){ ADD.forEach(function(a){ var want=on(a[0])&&(a[0]!=="erp"||isMgr()), i=NAV.findIndex(function(n){return n[0]===a[0];});
+  if(want&&i<0){ var si=NAV.findIndex(function(n){return n[0]==="settings";}); NAV.splice(si<0?NAV.length:si,0,a); }
+  if(!want&&i>=0) NAV.splice(i,1); });
+  if((VIEW==="iso"&&!on("iso"))||(VIEW==="erp"&&!(on("erp")&&isMgr()))) VIEW="pos"; }
+var _r=render; render=function(){ try{ syncNav(); }catch(e){}
+  var r=_r.apply(this,arguments);
+  try{ var v=$("view"); if(v&&VIEW==="iso") v.innerHTML=vIso(); else if(v&&VIEW==="erp") v.innerHTML=vErp(); paintAddIcons(); }catch(e){ console.warn("addons-p",e); }
+  return r; };
+
+/* ───────── ISO ───────── */
+function vIso(){ var ncr=byKind("NCR"), open=ncr.filter(function(r){return r.status!=="CLOSED";}), docs=byKind("DOC").filter(function(d){return d.status==="EFFECTIVE";});
+  var mine=ncr.slice().sort(function(a,b){return String(b.no).localeCompare(String(a.no));}).slice(0,12);
+  var opt=function(arr,id,v){ return '<select class="inp" id="'+id+'">'+arr.map(function(o){return '<option value="'+esc(o[0])+'"'+(o[0]===v?" selected":"")+'>'+esc(o[1])+'</option>';}).join("")+'</select>'; };
+  var items=(DB.itemMaster||[]).map(function(i){return '<option value="'+esc(i.code)+'">'+esc(i.name||"")+'</option>';}).join("");
+  return '<div class="adp"><div class="adp-kpi"><div><small>'+T("NCR ที่ยังเปิด","Open NCRs")+'</small><b>'+num(open.length)+'</b></div><div><small>'+T("เอกสารที่ใช้งาน","Documents in force")+'</small><b>'+num(docs.length)+'</b></div></div>'
+   +'<div class="adp-card"><h3>'+T("แจ้งปัญหา (เปิด NCR)","Report a problem (new NCR)")+'</h3><div class="adp-g">'
+     +'<label>'+T("แหล่งที่พบ","Source")+opt(SRC,"pnSrc","CUST")+'</label><label>'+T("ความรุนแรง","Severity")+opt(SEV,"pnSev","MINOR")+'</label>'
+     +'<label>'+T("รหัสสินค้า","Item code")+'<input class="inp" id="pnCode" list="pnItems"><datalist id="pnItems">'+items+'</datalist></label>'
+     +'<label>'+T("จำนวน","Qty")+'<input class="inp" id="pnQty" type="number" min="0" value="1"></label>'
+     +'<label>'+T("เลขบิล / อ้างอิง","Bill / reference")+'<input class="inp" id="pnRef"></label></div>'
+     +'<label style="display:block;margin-top:10px">'+T("รายละเอียดปัญหา *","What is wrong *")+'<textarea class="inp" id="pnDesc" rows="2"></textarea></label>'
+     +'<button class="btn primary" style="margin-top:10px" onclick="isoNcrP()">'+T("บันทึก NCR","Save NCR")+'</button>'
+     +'<div style="font-size:12px;color:var(--sub);margin-top:6px">'+T("การแก้ไข/ปิด NCR ทำที่เว็บหลักหรือมือถือ","Follow-up and closing are on the web or the phone")+'</div></div>'
+   +'<div class="adp-g" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr))"><div class="adp-card"><h3>'+T("NCR ล่าสุด","Recent NCRs")+'</h3>'+(mine.length?mine.map(function(r){ return '<div class="adp-row"><span><b>'+esc(r.no)+'</b> <small>'+esc(r.code||"")+'</small><br><small>'+esc(String(r.desc||"").slice(0,60))+'</small></span><small>'+esc(nm(NST,r.status))+'</small></div>'; }).join(""):'<div style="color:var(--sub)">-</div>')+'</div>'
+   +'<div class="adp-card"><h3>'+T("เอกสารที่ใช้งาน","Documents in force")+'</h3>'+(docs.length?docs.map(function(d){ var ok=/^https?:\/\//i.test(d.url||""); return '<div class="adp-row"><span><b>'+esc(d.code)+'</b> · Rev. '+esc(d.rev||"0")+'<br><small>'+esc(d.title)+'</small></span>'+(ok?'<a class="btn ghost sm" href="'+esc(d.url)+'" target="_blank" rel="noopener">'+T("เปิด","Open")+'</a>':'')+'</div>'; }).join(""):'<div style="color:var(--sub)">-</div>')+'</div></div></div>';
+}
+window.isoNcrP=function(){ var desc=g("pnDesc"); if(!desc){ toast(T("กรอกรายละเอียดปัญหา","Describe the problem"),"warn"); return; }
+  var code=g("pnCode"), it=code?(itemByCode(code)||{}):{}, now=today()+" "+nowTime();
+  var r={id:rid("NCR"),kind:"NCR",no:seqNo(),date:today(),source:g("pnSrc"),severity:g("pnSev"),code:code,name:it.name||"",qty:parseFloat(g("pnQty"))||0,ref:g("pnRef"),desc:desc,status:"OPEN",by:whoName(),
+    hist:[{at:now,by:whoName(),status:"OPEN",note:T("เปิด NCR (POS)","Opened (POS)")}]};
+  recs().push(r); Store.save(); toast(T("บันทึก NCR แล้ว ","NCR saved ")+r.no,"ok"); render(); };
+
+/* reason gate (own layer) */
+var _pass=null;
+function sigP(){ return (DB.history||[]).length+"|"+(DB.returns||[]).length+"|"+(DB.stocktake||[]).length+"|"+(DB.stock||[]).reduce(function(a,s){return a+(parseInt(s.qty,10)||0);},0); }
+function logChg(label,target,p){ recs().push({id:rid("CHG"),kind:"CHG",date:today(),at:today()+" "+nowTime(),by:whoName(),action:label,target:target,reason:p.reason,note:p.note,src:"pos"}); try{ Store.save(); }catch(e){} }
+function gateP(name,label,textOf){ var orig=window[name]; if(typeof orig!=="function") return;
+  window[name]=function(){ var args=[].slice.call(arguments);
+    if(!ruleOn("reason")) return orig.apply(this,args);
+    if(_pass&&_pass.name===name){ var p=_pass; _pass=null; var before=sigP(), tgt=textOf(args); var r=orig.apply(this,args);
+      var after=function(){ if(sigP()!==before) logChg(label,tgt,p); };
+      if(r&&typeof r.then==="function") r.then(after,after); else after(); return r; }
+    window._isoGateP={name:name,args:args};
+    var o=$("isoAskP"); if(!o){ o=document.createElement("div"); o.id="isoAskP"; document.body.appendChild(o); }
+    o.innerHTML='<div class="b"><b style="font-size:16px">'+T("ระบุเหตุผล (ISO)","Reason required (ISO)")+'</b><div style="font-size:12.5px;color:var(--sub);margin:2px 0 12px">'+esc(label)+' · '+esc(textOf(args))+'</div>'
+      +'<label style="display:block;margin-bottom:8px">'+T("เหตุผล","Reason")+'<select class="inp" id="isoRsP">'+REASONS.map(function(x){return '<option>'+esc(x)+'</option>';}).join("")+'</select></label>'
+      +'<label style="display:block;margin-bottom:12px">'+T("รายละเอียดเพิ่มเติม","Details")+'<input class="inp" id="isoRnP"></label>'
+      +'<div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn ghost" onclick="$(\'isoAskP\').className=\'\';window._isoGateP=null">'+T("ยกเลิก","Cancel")+'</button><button class="btn primary" onclick="isoGateOkP()">'+T("ยืนยัน","Confirm")+'</button></div></div>';
+    o.className="open"; }; }
+window.isoGateOkP=function(){ var q=window._isoGateP; if(!q) return; var reason=g("isoRsP"), note=g("isoRnP");
+  if(reason===T("อื่น ๆ","Other")&&!note){ toast(T("เลือก 'อื่น ๆ' ต้องกรอกรายละเอียด","'Other' needs details"),"warn"); return; }
+  $("isoAskP").className=""; window._isoGateP=null; _pass={name:q.name,reason:reason,note:note}; window[q.name].apply(window,q.args); _pass=null; };
+gateP("confirmReturn",T("คืนสินค้า / คืนเงิน","Return / refund"),function(a){ var s=(DB.sales||[]).find(function(x){return x.id===a[0];})||{}; return (s.ref||a[0])+" · "+(a[2]||""); });
+gateP("stkSave",T("บันทึกนับสต๊อก","Stock count"),function(a){ return String(a[0]||""); });
+
+/* ───────── ERP: POS sales export ───────── */
+function E(){ var s=CS(); if(!s.erp||typeof s.erp!=="object") s.erp={}; return s.erp; }
+var FIELDS=["ref","date","time","branch","cashier","customer","code","name","qty","price","lineTotal","billTotal","vatAmt","pay","status"];
+function colOf(f){ var m=(E().map||{}).sales||{}; return String(m[f]||"").trim()||f; }
+function sid(s){ return parseInt(String(s.id||"").replace(/\D/g,""),10)||0; }
+function saleRows(list){ var out=[]; list.forEach(function(s){ var pay=(s.pay||[]).map(function(p){return (p.method||p.m||"")+":"+(parseFloat(p.amount!=null?p.amount:p.amt)||0);}).join(" ");
+  (s.lines||[]).forEach(function(l){ var q=parseFloat(l.qty)||0, pr=parseFloat(l.price)||0, d=parseFloat(l.disc)||0;
+    out.push({ref:s.ref,date:s.date,time:s.time,branch:s.branch||"",cashier:s.cashierName||s.cashier||"",customer:s.customerName||s.customer||"",code:l.code,name:l.name,qty:q,price:pr,lineTotal:Math.round((q*pr-d)*100)/100,billTotal:s.total,vatAmt:s.vatAmt||0,pay:pay,status:s.status}); }); }); return out; }
+function vErp(){ var e=E();
+  return '<div class="adp"><div class="adp-card"><h3>'+T("ส่งออกยอดขาย POS ไป ERP","Export POS sales to ERP")+'</h3><div class="adp-g">'
+    +'<label>'+T("ตั้งแต่วันที่","From")+'<input class="inp" id="pxFrom" type="date" value="'+today()+'"></label><label>'+T("ถึงวันที่","To")+'<input class="inp" id="pxTo" type="date" value="'+today()+'"></label>'
+    +'<label>'+T("สถานะบิล","Bills")+'<select class="inp" id="pxSt"><option value="Paid">'+T("ชำระแล้ว","Paid")+'</option><option value="ALL">'+T("ทั้งหมด (รวมคืน/ยกเลิก)","All (incl. returns / voids)")+'</option></select></label></div>'
+    +'<label style="display:flex;gap:8px;align-items:center;margin:12px 0;font-size:13px"><input type="checkbox" id="pxNew"> '+T("เฉพาะบิลที่ยังไม่เคยส่งออก (ไม่สนช่วงวันที่)","Only bills not exported yet (ignores the dates)")+'</label>'
+    +(e.lastSaleAt?'<div style="font-size:12px;color:var(--sub);margin-bottom:10px">'+T("ส่งออกยอดขายล่าสุด ","Last sales export ")+esc(e.lastSaleAt)+'</div>':"")
+    +'<div style="font-size:12px;color:var(--sub);margin-bottom:12px">'+T("คอลัมน์: ","Columns: ")+FIELDS.map(function(f){return '<code>'+esc(colOf(f))+'</code>';}).join(", ")+'</div>'
+    +'<button class="btn primary" onclick="erpSalesP()">'+T("ส่งออก CSV","Export CSV")+'</button>'
+    +'<div style="font-size:12px;color:var(--sub);margin-top:8px">'+T("ตั้งชื่อคอลัมน์ได้ที่เว็บหลัก (เชื่อมต่อ ERP → การแมปฟิลด์ → ยอดขาย POS)","Column names are set on the web (ERP connector → Field mapping → POS sales)")+'</div></div></div>'; }
+function cell(v){ var isNum=typeof v==="number"||/^-?[0-9]+([.][0-9]+)?$/.test(String(v==null?"":v)); v=v==null?"":String(v); if(!isNum&&/^[=+\-@\t\r]/.test(v)) v="'"+v; return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }
+window.erpSalesP=function(){ var e=E(), from=g("pxFrom"), to=g("pxTo"), st=g("pxSt"), onlyNew=!!($("pxNew")||{}).checked;
+  var list=(DB.sales||[]).filter(function(s){ return s.status!=="Hold"&&(st==="ALL"||s.status===st); });
+  if(onlyNew) list=list.filter(function(s){ return sid(s)>(+e.lastSaleId||0); }); else list=list.filter(function(s){ return (!from||s.date>=from)&&(!to||s.date<=to); });
+  var rows=saleRows(list); if(!rows.length){ toast(T("ไม่มีข้อมูลตามเงื่อนไข","Nothing matches"),"warn"); return; }
+  var text=FIELDS.map(function(f){return cell(colOf(f));}).join(",")+"\n"+rows.map(function(r){ return FIELDS.map(function(f){return cell(r[f]);}).join(","); }).join("\n");
+  var blob=new Blob(["﻿"+text],{type:"text/csv;charset=utf-8"}), url=URL.createObjectURL(blob), a=document.createElement("a");
+  a.href=url; a.download="erp_sales_"+today().replace(/-/g,"")+".csv"; document.body.appendChild(a); a.click(); setTimeout(function(){ a.remove(); URL.revokeObjectURL(url); },200);
+  var mx=list.reduce(function(m,s){ return Math.max(m,sid(s)); },0); if(mx>(+e.lastSaleId||0)){ e.lastSaleId=mx; e.lastSaleAt=today()+" "+nowTime(); }
+  recs().push({id:rid("ERP"),kind:"ERP",date:today(),at:today()+" "+nowTime(),by:whoName(),dir:"OUT",dataset:"sales",rows:rows.length,detail:"POS · "+list.length+T(" บิล"," bills")+(onlyNew?" · "+T("เฉพาะใหม่","new only"):" · "+from+" → "+to)});
+  Store.save(); toast(T("ส่งออกแล้ว ","Exported ")+num(list.length)+T(" บิล"," bills"),"ok"); };
+})();
+</script>
+<style id="dark-mode">
+/* ═══ DARK MODE — html[data-theme=dark]; the moon/sun button next to the language switch toggles it (saved per browser, key _wms_theme,
+   shared with index/mobile/pos on the same site). Delete this block + script#dark-mode-js to remove. ═══ */
+html[data-theme=dark]{color-scheme:dark;
+  --ink:#ece8e5;--ink2:#d9d4d0;--text:#ece8e5;--sub:#a39d99;--sub2:#77716d;
+  --bg:#121010;--canvas:#121010;--card:#1d1a18;--panel:#1d1a18;--soft:#272321;--soft2:#221f1d;--line:#2f2b28;--line2:#292522;
+  --peach:rgba(244,122,51,.20);--accent-soft:rgba(244,122,51,.14);--accent-line:rgba(244,122,51,.35);--wd-bg:rgba(244,122,51,.14);
+  --shadow:0 1px 2px rgba(0,0,0,.3);--shadow2:0 14px 30px rgba(0,0,0,.45);}
+html[data-theme=dark] body{background:var(--bg);color:var(--text)}
+html[data-theme=dark] .inp,
+html[data-theme=dark] .pcard,
+html[data-theme=dark] .tabs button,
+html[data-theme=dark] .tabs .cat-select,
+html[data-theme=dark] .qtybox input,
+html[data-theme=dark] .paybtn,
+html[data-theme=dark] .scan-confirm,
+html[data-theme=dark] .qr-expand-box,
+html[data-theme=dark] .btn.ghost,
+html[data-theme=dark] .login-card,
+html[data-theme=dark] .nav,
+html[data-theme=dark] .topbar-sync,html[data-theme=dark] .langsw,
+html[data-theme=dark] .acct-menu,
+html[data-theme=dark] .panel,html[data-theme=dark] .stat,html[data-theme=dark] .mode-card,html[data-theme=dark] .cart,
+html[data-theme=dark] .tabs button,html[data-theme=dark] .tabs .cat-select,
+html[data-theme=dark] .pcard .fav,
+html[data-theme=dark] .qtybox button,
+html[data-theme=dark] .modal,
+html[data-theme=dark] .mnav,
+html[data-theme=dark] #posTabs button,
+html[data-theme=dark] #posTabs button.on .ci,
+html[data-theme=dark] .pos-paytiles button,
+html[data-theme=dark] #app,
+html[data-theme=dark] .topbar-sync,
+html[data-theme=dark] .view,
+html[data-theme=dark] .pcard.p3c,
+html[data-theme=dark] .pcard.p3c .fav,
+html[data-theme=dark] .p3-ic,
+html[data-theme=dark] .p3-ic.pay-scan,
+html[data-theme=dark] .p3-search,
+html[data-theme=dark] .p3 #posTabs button,
+html[data-theme=dark] .p3-hold,
+html[data-theme=dark] .p3-ci,
+html[data-theme=dark] .p3-pays button span,
+html[data-theme=dark] #app .topbar,
+html[data-theme=dark] #app .topbar-sync,
+html[data-theme=dark] #app .topbar .who .av,
+html[data-theme=dark] .p3 .pos-right{background:var(--card)!important}
+html[data-theme=dark] .pcard.p3c .p3-badge,
+html[data-theme=dark] .p3-hold .av{color:var(--text)!important}
+html[data-theme=dark] .p3-step span,
+html[data-theme=dark] .p3 #posTabs button.on,
+html[data-theme=dark] .p3-seg button.on,
+html[data-theme=dark] .p3-pays button.on span,
+html[data-theme=dark] .langsw button.on,
+html[data-theme=dark] #app .nav button.on{color:#1a1715!important}
+[data-theme=dark] [style*="background:#fff"],[data-theme=dark] [style*="background: #fff"],[data-theme=dark] [style*="background:#ffffff"],[data-theme=dark] [style*="background:white"]{background:var(--card)!important}
+[data-theme=dark] [style*="color:#1f2125"],[data-theme=dark] [style*="color:#2f2a27"],[data-theme=dark] [style*="color:#333"],[data-theme=dark] [style*="color:#222"]{color:var(--text)!important}
+html[data-theme=dark] input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]),html[data-theme=dark] select,html[data-theme=dark] textarea,html[data-theme=dark] .inp{background:var(--soft)!important;color:var(--text)!important;border-color:var(--line)!important}
+html[data-theme=dark] input::placeholder,html[data-theme=dark] textarea::placeholder{color:var(--sub2)}
+html[data-theme=dark] input[type=date]::-webkit-calendar-picker-indicator{filter:invert(.8)}
+html[data-theme=dark] .tag,html[data-theme=dark] .pill,html[data-theme=dark] .badge{filter:brightness(1.55) saturate(1.1);background-color:rgba(255,255,255,.06)!important}
+html[data-theme=dark] .langsw button.on{color:#1a1715!important}
+html[data-theme=dark] .p3-pays button.on span{background:var(--ink)!important;color:#1a1715!important}
+.thsw *,.thsw *::before,.thsw *::after{transition:none!important}
+.topbar>.themebtn{grid-area:tools;justify-self:start;align-self:center;margin-left:44px}
+.themebtn{width:36px;height:36px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--text);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto;margin-right:6px;padding:0;vertical-align:middle}
+.themebtn svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+</style>
+<script id="dark-mode-js">
+(function(){
+var MOON='<svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
+var SUN='<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+function isDark(){ return document.documentElement.getAttribute("data-theme")==="dark"; }
+function th(){ try{ return (typeof LANG!=="undefined"?LANG:(typeof lang!=="undefined"?lang:"th"))==="th"; }catch(e){ return true; } }
+function paint(){ var bs=document.querySelectorAll(".themebtn"); var st=isDark()?"d":"l"; for(var i=0;i<bs.length;i++){ if(bs[i].dataset.s===st) continue; bs[i].dataset.s=st; bs[i].innerHTML=isDark()?SUN:MOON; bs[i].title=th()?(isDark()?"โหมดสว่าง":"โหมดมืด"):(isDark()?"Light mode":"Dark mode"); } }
+window.toggleTheme=function(e){ var R=document.documentElement; R.classList.add("thsw"); setTimeout(function(){ R.classList.remove("thsw"); },80); if(e&&e.stopPropagation) e.stopPropagation(); var d=!isDark(); if(d) document.documentElement.setAttribute("data-theme","dark"); else document.documentElement.removeAttribute("data-theme");
+  try{ localStorage.setItem("_wms_theme",d?"dark":"light"); }catch(x){} var m=document.querySelector('meta[name=theme-color]'); if(m) m.setAttribute("content",d?"#121010":(m.getAttribute("data-light")||m.getAttribute("content"))); paint(); };
+function ensure(){ var ps=document.querySelectorAll(".langsw"); for(var i=0;i<ps.length;i++){ var p=ps[i], prev=p.previousElementSibling; if(prev&&prev.classList.contains("themebtn")) continue;
+  var b=document.createElement("button"); b.type="button"; b.className="themebtn"; b.onclick=window.toggleTheme; p.parentNode.insertBefore(b,p);
+  if(getComputedStyle(p.parentNode).display.indexOf("flex")<0){ p.parentNode.style.display="flex"; p.parentNode.style.alignItems="center"; } } paint(); }
+var busy=false; new MutationObserver(function(){ if(busy) return; busy=true; try{ ensure(); } finally { busy=false; } }).observe(document.body,{childList:true,subtree:true});
+ensure();
+})();
+</script>
+<script id="pkg-scope-p">
+/* ═══ PACKAGES in the POS — same package as the web (settings.pkg, picked by the Super Admin).
+   Each POS screen follows a web menu: selling screens = sales orders (WMS + Business and up), withdraw = issue,
+   product = stock balance, stocktake = stock count. Screens outside the package disappear from the side menu,
+   the phone bar and the More sheet; if "Sell" is the main button but not in the package, "Withdraw" takes its place.
+   No package saved = Full System (no change). ═══ */
+(function(){
+"use strict";
+/* package lists — copied from index.html <script id="pkg-scope"> (keep the three files in step) */
+var BASIC=["home","guide",
+  "inbound-reg","inbound-inq","outbound-pick","outbound-inq","stock-bal","change-loc","stocktake",
+  "m-item","m-loc","m-user","m-supplier","m-customer",
+  "rpt-inbound","rpt-outbound","rpt-stock","rpt-card","rpt-lowstock","history",
+  "set-company","set-features","set-save","set-menus","set-font","set-mobile"];
+var STANDARD=BASIC.concat(["approvals","sched-ALL","sched-PO","sched-PICK","sched-PD","sched-SO","sched-RQ","booking",
+  "returns","packing","hu","ng-stock","qc","wh-dash","wh-layout",
+  "m-pallet","m-tote","m-label","m-logistic","m-ng","tag-label","tag-history",
+  "rpt-value","rpt-abc","rpt-aging","set-lot","set-track","set-hu","dock","cycle"]);
+var ADVANCED=STANDARD.concat(["wave","assembly","m-bom","wh-3d","audit-log","kpi"]);
+var BUSINESS=ADVANCED.concat(["po","so","acc-summary","acc-docs","acc-po","acc-gr","acc-settings",
+  "rent","rent-log","mp-orders","mp-sales","mp-settings"]);
+var ALL=BUSINESS.concat(["iso-dash","iso-ncr","iso-trace","iso-docs","iso-changes",
+  "erp-export","erp-import","erp-map","erp-api","erp-log","addons","billing","companies","ui-editor"]);
+var PKG_LISTS={basic:BASIC,standard:STANDARD,advanced:ADVANCED,business:BUSINESS}, PKG_KNOWN={};
+ALL.forEach(function(id){ PKG_KNOWN[id]=1; });
+function pkgOf(s){ var p=s&&s.pkg; return PKG_LISTS[p]?p:"full"; }
+function inPkg(p,id){ var l=PKG_LISTS[p]; if(!l) return true; id=String(id); if(!PKG_KNOWN[id]) return true; return l.indexOf(id)>=0; }
+window.pkgOf=pkgOf; window.inPkg=inPkg;
+var VMAP={pos:"so",customers:"so",promotions:"so",cashier:"so",returns:"so",reports:"so",
+  withdraw:"outbound-pick",inquiry:"stock-bal",stocktake:"stocktake",iso:"iso-dash",erp:"erp-export"};
+function cur(){ try{ return CID?pkgOf(settings()):"full"; }catch(e){ return "full"; } }
+function blocked(v){ var w=VMAP[v]; return !!w&&!inPkg(cur(),w); }
+window.pkgBlockedP=blocked;
+function firstOk(){ var o=["pos","withdraw","inquiry","dashboard"]; for(var i=0;i<o.length;i++) if(!blocked(o[i])) return o[i]; return "dashboard"; }
+function prune(root){ (root||document).querySelectorAll('[onclick^="go(\'"]').forEach(function(b){
+  var m=/^go\('([\w-]+)'\)/.exec(b.getAttribute("onclick")||""); if(!m) return; var off=blocked(m[1]);
+  if(off){ if(b.style.display!=="none") b.style.display="none"; } else if(b.style.display==="none"&&b.dataset.pkgOff) b.style.display="";
+  if(off) b.dataset.pkgOff="1"; else delete b.dataset.pkgOff; }); }
+/* main button: Sell → Withdraw when selling is outside the package */
+var _rm=renderMnav; renderMnav=function(){ var p=null; try{ p=posCfg(); }catch(e){}
+  if(p&&p.primaryAction!=="withdraw"&&blocked("pos")&&!blocked("withdraw")){ p.primaryAction="withdraw"; try{ return _rm.apply(this,arguments); } finally { p.primaryAction="pos"; } }
+  return _rm.apply(this,arguments); };
+var _go=go; go=function(v){ if(blocked(v)){ toast(T("เมนูนี้ไม่อยู่ในแพ็กเกจของบริษัท","This menu is not in your company's package"),"err"); v=firstOk(); } return _go.call(this,v); };
+var _r=render; render=function(){ if(typeof VIEW!=="undefined"&&blocked(VIEW)) VIEW=firstOk(); var r=_r.apply(this,arguments); try{ prune(); }catch(e){} return r; };
+/* the More sheet and anything drawn later */
+var busy=false; new MutationObserver(function(){ if(busy) return; busy=true; try{ prune(); } finally { busy=false; } }).observe(document.body,{childList:true,subtree:true});
+})();
 </script>
 </body></html>

@@ -2,8 +2,8 @@
 /* Copy to config_supabase.php (same folder as api_supabase.php) and fill in.
  * Keep this file server-side only — never commit real keys. */
 return [
-    'url'          => 'https://ehkyrzyfqkspppzslxgc.supabase.co',
-    'service_key'  => 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVoa3lyenlmcWtzcHBwenNseGdjIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4ODAyNDIwOSwiZXhwIjoyMTAzNjAwMjA5fQ.c5NVl4FIHMkSFboehOicfNTeegoahUrxC_TgR_M3Kk4',     // or sb_secret_... ; ROTATE it if it was ever exposed
+    'url'          => 'https://ljximlcmikpvdtvodwwt.supabase.co',
+    'service_key'  => 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxqeGltbGNtaWtwdmR0dm9kd3d0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MTM4MTE1NiwiZXhwIjoyMTA2OTU3MTU2fQ.YDi1MrdcRMgfg36IPGdHSR8umI93zQcmjQZK-DYYWVY',     // or sb_secret_... ; ROTATE it if it was ever exposed
     'bucket'       => 'mywms',
 
     // Long random secret used to sign login tokens. Generate one, e.g.:

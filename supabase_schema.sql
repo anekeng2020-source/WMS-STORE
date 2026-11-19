@@ -14,6 +14,13 @@
 --   Then add a line to the change log below.
 --
 --  CHANGE LOG  (newest first — matching files are in sql_updates/)
+--   2026-11-13  add-ons (ISO / ERP): table "addonRecords"   → sql_updates/2026-11-13_addons.sql
+--   2026-11-12  rental jobs (งานเช่า): table "rentals"        → sql_updates/2026-11-12_rentals.sql
+--   2026-11-05  label history: table "labelLog"              → sql_updates/2026-11-05_label_log.sql
+--   2026-11-02  data log: table audit_log + triggers on every table → sql_updates/2026-11-02_audit_log.sql
+--   2026-11-01  requisitions (schedule type RQ): schedule.requester / requesterUser → sql_updates/2026-11-01_requisitions.sql
+--   2026-10-31  pallet / tote master (huMaster.ptype, note), history.hu/pallet/tote → sql_updates/2026-10-31_pallet_tote_master.sql
+--   2026-10-31  totes & pallets table "huMaster", stock."hu" → sql_updates/2026-10-31_handling_units.sql
 --   2026-10-24  quantities saved as +/- (wms_apply_delta)     → sql_updates/2026-10-24_stock_delta.sql
 --   2026-10-24  POS withdrawal documents table "withdrawals"  → sql_updates/2026-10-24_pos_withdrawals.sql
 --   2026-10-07  marketplace orders table "mpOrders"         → sql_updates/2026-10-07_marketplace_orders.sql
@@ -57,10 +64,12 @@ create table if not exists public."stock" (
   "exp" text generated always as (data->>'exp') stored,
   "sn" text generated always as (data->>'sn') stored,
   "cost" text generated always as (data->>'cost') stored,
+  "hu" text generated always as (data->>'hu') stored,             -- the tote / pallet it sits in (added 2026-10-31)
   data    jsonb,
   primary key (company, rk)
 );
 create index if not exists "stock_company" on public."stock" (company);
+alter table public."stock" add column if not exists "hu" text generated always as (data->>'hu') stored;   -- older databases
 
 create table if not exists public."locationMaster" (
   company text not null,
@@ -107,9 +116,15 @@ create table if not exists public."history" (
   "supplier" text generated always as (data->>'supplier') stored,
   "dept" text generated always as (data->>'dept') stored,
   "value" text generated always as (data->>'value') stored,
+  "hu" text generated always as (data->>'hu') stored,             -- the container it was in (added 2026-10-31)
+  "pallet" text generated always as (data->>'pallet') stored,
+  "tote" text generated always as (data->>'tote') stored,
   data    jsonb,
   primary key (company, rk)
 );
+alter table public."history" add column if not exists "hu"     text generated always as (data->>'hu') stored;       -- older databases
+alter table public."history" add column if not exists "pallet" text generated always as (data->>'pallet') stored;
+alter table public."history" add column if not exists "tote"   text generated always as (data->>'tote') stored;
 create index if not exists "history_company" on public."history" (company);
 
 create table if not exists public."schedule" (
@@ -123,10 +138,15 @@ create table if not exists public."schedule" (
   "due" text generated always as (data->>'due') stored,
   "dept" text generated always as (data->>'dept') stored,
   "status" text generated always as (data->>'status') stored,
+  "requester"     text generated always as (data->>'requester') stored,       -- requisitions (type RQ): who asked
+  "requesterUser" text generated always as (data->>'requesterUser') stored,
   data    jsonb,
   primary key (company, rk)
 );
+alter table public."schedule" add column if not exists "requester"     text generated always as (data->>'requester') stored;      -- older databases
+alter table public."schedule" add column if not exists "requesterUser" text generated always as (data->>'requesterUser') stored;
 create index if not exists "schedule_company" on public."schedule" (company);
+create index if not exists "schedule_type" on public."schedule" (company, "type");
 
 create table if not exists public."bookings" (
   company text not null,
@@ -326,8 +346,69 @@ create table if not exists public."withdrawals" (         -- POS withdrawal docu
 create index if not exists "withdrawals_company" on public."withdrawals" (company);
 create index if not exists "withdrawals_date"    on public."withdrawals" (company, "date");
 
+-- Pallet master AND tote master: one row per pallet / tote, told apart by "type". Their type lists (palletTypes / toteTypes)
+-- and the levels in use (huCtl) are company settings (settings.data), not tables.
+create table if not exists public."huMaster" (            -- totes & pallets: item → tote → pallet → location (added 2026-10-31)
+  company  text not null,
+  rk       text not null,                                          -- the tote / pallet code
+  "code"   text generated always as (data->>'code') stored,
+  "type"   text generated always as (data->>'type') stored,        -- tote | pallet
+  "parent" text generated always as (data->>'parent') stored,      -- the pallet a tote sits on
+  "loc"    text generated always as (data->>'loc') stored,         -- the location (pallets, totes not on a pallet)
+  "ptype"  text generated always as (data->>'ptype') stored,       -- pallet / tote type name
+  "note"   text generated always as (data->>'note') stored,
+  data     jsonb,
+  primary key (company, rk)
+);
+alter table public."huMaster" add column if not exists "ptype" text generated always as (data->>'ptype') stored;   -- older databases
+alter table public."huMaster" add column if not exists "note"  text generated always as (data->>'note') stored;
+create index if not exists "huMaster_company" on public."huMaster" (company);
+create index if not exists "huMaster_type"    on public."huMaster" (company, "type");
+create index if not exists "huMaster_parent"  on public."huMaster" (company, "parent");
+create index if not exists "huMaster_loc"     on public."huMaster" (company, "loc");
+
+create table if not exists public."labelLog" (            -- label history: which numbers were made, reprints (added 2026-11-05)
+  company  text not null,
+  rk       text not null,
+  "id"     text generated always as (data->>'id') stored,
+  "date"   text generated always as (data->>'date') stored,
+  "kind"   text generated always as (data->>'kind') stored,        -- item | stock | sched | loc
+  "code"   text generated always as (data->>'code') stored,
+  data     jsonb,
+  primary key (company, rk)
+);
+create index if not exists "labelLog_company" on public."labelLog" (company);
+create index if not exists "labelLog_code"    on public."labelLog" (company, "code");
+
 -- ---- User accounts: one row per user (replaces the old kv 'users' JSON) ----
 -- Secrets are ONLY bcrypt/argon hashes from PHP password_hash(); never plaintext.
+create table if not exists public."rentals" (            -- rental jobs: plan, per-line step quantities, step log (added 2026-11-12)
+  company    text not null,
+  rk         text not null,
+  "id"       text generated always as (data->>'id') stored,
+  "no"       text generated always as (data->>'no') stored,
+  "customer" text generated always as (data->>'customer') stored,
+  "status"   text generated always as (data->>'status') stored,
+  "parentId" text generated always as (data->>'parentId') stored,
+  data       jsonb,
+  primary key (company, rk)
+);
+create index if not exists "rentals_company" on public."rentals" (company);
+create index if not exists "rentals_status"  on public."rentals" (company, "status");
+create index if not exists "rentals_parent"  on public."rentals" (company, "parentId");
+
+create table if not exists public."addonRecords" (       -- add-on records: ISO NCR/CAPA, documents, change log; ERP batch log (added 2026-11-13)
+  company text not null,
+  rk      text not null,
+  "id"    text generated always as (data->>'id') stored,
+  "kind"  text generated always as (data->>'kind') stored,
+  "date"  text generated always as (data->>'date') stored,
+  data    jsonb,
+  primary key (company, rk)
+);
+create index if not exists "addonRecords_company" on public."addonRecords" (company);
+create index if not exists "addonRecords_kind"    on public."addonRecords" (company, "kind");
+
 create table if not exists public."userMaster" (
   username    text primary key,
   company     text not null default '',          -- company id, or '*' for Super Admin
@@ -351,7 +432,7 @@ declare t text;
 begin
   foreach t in array array['kv','settings','userMaster','itemMaster','stock','locationMaster','labelMaster','history','schedule',
     'bookings','logisticMaster','customerMaster','supplierMaster','ngMaster','bomMaster','stocktake','returns',
-    'sales','shifts','promotions','giftcards','purchaseOrders','salesOrders','mpOrders','withdrawals']
+    'sales','shifts','promotions','giftcards','purchaseOrders','salesOrders','mpOrders','withdrawals','huMaster','labelLog','rentals','addonRecords']
   loop
     if to_regclass(format('public.%I', t)) is not null then
       execute format('alter table public.%I enable row level security', t);
@@ -426,6 +507,156 @@ $$;
 revoke all on function public.wms_apply_delta(text, text, text, jsonb) from public, anon, authenticated;
 
 
+-- ---- Data log: who changed what, before / after (added 2026-11-02) ----
+create table if not exists public.audit_log (
+  id         bigint generated always as identity primary key,
+  at         timestamptz not null default now(),
+  company    text,
+  actor      text,                  -- username; "db:<role>" = changed directly in the database, not through the app
+  source     text,                  -- page + action, e.g. "mobile · savebatch"; "direct" = not through the app
+  ip         text,
+  req_id     text,                  -- rows written by the same request share it
+  op         text not null,         -- INSERT | UPDATE | DELETE | LOGIN | LOGIN_FAIL | MANAGER_APPROVE | MANAGER_APPROVE_FAIL | IMAGE_UPLOAD | IMAGE_DELETE
+  table_name text,
+  row_key    text,
+  changes    jsonb                  -- {"old":{…},"new":{…}}: an UPDATE keeps only the fields that changed
+);
+create index if not exists "audit_log_company_at" on public.audit_log (company, at desc);
+create index if not exists "audit_log_actor_at"   on public.audit_log (actor, at desc);
+create index if not exists "audit_log_row"        on public.audit_log (table_name, row_key, at desc);
+alter table public.audit_log enable row level security;
+revoke all on public.audit_log from anon, authenticated;
+
+-- a very large value (a picture, a whole warehouse layout) is noted by size instead of being copied
+create or replace function public.wms_audit_trim(v jsonb)
+returns jsonb language plpgsql immutable set search_path = pg_catalog as $$
+declare k text; x jsonb; o jsonb := '{}'::jsonb; big constant int := 8000;
+begin
+  if v is null then return null; end if;
+  if jsonb_typeof(v) <> 'object' then
+    if octet_length(v::text) > big then return jsonb_build_object('_omitted', true, 'bytes', octet_length(v::text)); end if;
+    return v;
+  end if;
+  for k, x in select * from jsonb_each(v) loop
+    if octet_length(x::text) > big then o := o || jsonb_build_object(k, jsonb_build_object('_omitted', true, 'bytes', octet_length(x::text)));
+    else o := o || jsonb_build_object(k, x); end if;
+  end loop;
+  return o;
+end $$;
+
+-- one row per change. A logging problem never blocks the save itself: it is raised as a WARNING in the database log.
+create or replace function public.wms_audit_row()
+returns trigger language plpgsql security definer set search_path = public, pg_catalog as $$
+declare
+  j_old jsonb; j_new jsonb; ref jsonb; d_old jsonb; d_new jsonb; o jsonb := '{}'::jsonb; n jsonb := '{}'::jsonb;
+  ch jsonb; k text; nm text; hdr text; b text; a jsonb;
+begin
+  begin
+    if TG_OP <> 'INSERT' then j_old := to_jsonb(OLD); end if;
+    if TG_OP <> 'DELETE' then j_new := to_jsonb(NEW); end if;
+    ref := coalesce(j_new, j_old);
+    if TG_TABLE_NAME = 'kv' then
+      nm := ref->>'name';
+      if nm = 'seq' or left(nm, 11) = 'mp_pending:' then return null; end if;                 -- running counters / short-lived OAuth state
+      if TG_OP = 'UPDATE' and (j_old->'data') is not distinct from (j_new->'data') then return null; end if;
+      if nm in ('companies', 'billing') then d_old := j_old->'data'; d_new := j_new->'data';
+      else                                                                                    -- may hold marketplace tokens / old credentials: never copied
+        if j_old is not null then d_old := '{"_redacted":"before"}'::jsonb; end if;
+        if j_new is not null then d_new := '{"_redacted":"after"}'::jsonb; end if;
+      end if;
+    elsif TG_TABLE_NAME = 'userMaster' then                                                   -- password / PIN hashes never reach the log
+      if j_old is not null then d_old := j_old - 'pass_hash' - 'pin_hash' - 'updated_at' - 'created_at'; end if;
+      if j_new is not null then d_new := j_new - 'pass_hash' - 'pin_hash' - 'updated_at' - 'created_at'; end if;
+      if TG_OP = 'UPDATE' then
+        if (j_old->>'pass_hash') is distinct from (j_new->>'pass_hash') then d_new := d_new || '{"passwordChanged":true}'::jsonb; end if;
+        if (j_old->>'pin_hash')  is distinct from (j_new->>'pin_hash')  then d_new := d_new || '{"pinChanged":true}'::jsonb; end if;
+      end if;
+    else
+      d_old := j_old->'data'; d_new := j_new->'data';
+    end if;
+
+    if TG_OP = 'UPDATE' then
+      if d_old is not distinct from d_new then return null; end if;                           -- saved again unchanged
+      if jsonb_typeof(d_old) = 'object' and jsonb_typeof(d_new) = 'object' then
+        for k in select jsonb_object_keys(d_old) union select jsonb_object_keys(d_new) loop
+          if (d_old->k) is distinct from (d_new->k) then
+            if d_old ? k then o := o || jsonb_build_object(k, d_old->k); end if;
+            if d_new ? k then n := n || jsonb_build_object(k, d_new->k); end if;
+          end if;
+        end loop;
+      else
+        o := jsonb_build_object('_value', d_old); n := jsonb_build_object('_value', d_new);
+      end if;
+      ch := jsonb_build_object('old', public.wms_audit_trim(o), 'new', public.wms_audit_trim(n));
+    elsif TG_OP = 'INSERT' then ch := jsonb_build_object('new', public.wms_audit_trim(d_new));
+    else ch := jsonb_build_object('old', public.wms_audit_trim(d_old));
+    end if;
+
+    -- who: api_supabase.php sends it on every write; PostgREST exposes the request headers here
+    begin
+      hdr := current_setting('request.headers', true);
+      if coalesce(hdr, '') <> '' then
+        b := hdr::jsonb->>'x-wms-actor';
+        if coalesce(b, '') <> '' then a := convert_from(decode(b, 'base64'), 'UTF8')::jsonb; end if;
+      end if;
+    exception when others then a := null;                                                     -- unreadable: the row is still kept, without a name
+    end;
+    insert into public.audit_log (company, actor, source, ip, req_id, op, table_name, row_key, changes)
+    values (ref->>'company', coalesce(a->>'u', 'db:' || session_user), coalesce(a->>'src', 'direct'), a->>'ip', a->>'req',
+            TG_OP, TG_TABLE_NAME, coalesce(ref->>'rk', ref->>'username', ref->>'name', ref->>'company'), ch);
+  exception when others then
+    raise warning 'wms_audit_row %.%: %', TG_TABLE_NAME, TG_OP, sqlerrm;
+  end;
+  return null;
+end $$;
+revoke all on function public.wms_audit_row() from public, anon, authenticated;
+revoke all on function public.wms_audit_trim(jsonb) from public, anon, authenticated;
+
+-- every table the app writes. A table added later must be added to this list too.
+do $$
+declare t text;
+begin
+  foreach t in array array['kv','settings','userMaster','itemMaster','stock','locationMaster','labelMaster','history','schedule',
+    'bookings','logisticMaster','customerMaster','supplierMaster','ngMaster','bomMaster','stocktake','returns',
+    'sales','shifts','promotions','giftcards','purchaseOrders','salesOrders','mpOrders','withdrawals','huMaster','labelLog','rentals','addonRecords']
+  loop
+    if to_regclass(format('public.%I', t)) is not null then
+      execute format('drop trigger if exists wms_audit on public.%I', t);
+      execute format('create trigger wms_audit after insert or update or delete on public.%I for each row execute function public.wms_audit_row()', t);
+    end if;
+  end loop;
+end $$;
+
+-- the log is append-only: rows can't be edited or removed, except through wms_audit_purge below
+create or replace function public.wms_audit_guard()
+returns trigger language plpgsql set search_path = pg_catalog as $$
+begin
+  if current_setting('wms.audit_purge', true) is distinct from 'on' then
+    raise exception 'audit_log is append-only';
+  end if;
+  return old;
+end $$;
+drop trigger if exists wms_audit_lock on public.audit_log;
+create trigger wms_audit_lock before update or delete on public.audit_log for each row execute function public.wms_audit_guard();
+drop trigger if exists wms_audit_lock_truncate on public.audit_log;
+create trigger wms_audit_lock_truncate before truncate on public.audit_log for each statement execute function public.wms_audit_guard();
+revoke all on function public.wms_audit_guard() from public, anon, authenticated;
+
+-- nothing is removed automatically. To trim old rows by hand (at least 90 days are always kept):
+--   select public.wms_audit_purge(730);
+create or replace function public.wms_audit_purge(p_days int)
+returns bigint language plpgsql set search_path = public, pg_catalog as $$
+declare gone bigint;
+begin
+  if p_days is null or p_days < 90 then raise exception 'keep at least 90 days'; end if;
+  perform set_config('wms.audit_purge', 'on', true);
+  delete from public.audit_log where at < now() - make_interval(days => p_days);
+  get diagnostics gone = row_count;
+  perform set_config('wms.audit_purge', 'off', true);
+  return gone;
+end $$;
+revoke all on function public.wms_audit_purge(int) from public, anon, authenticated;
+
 -- ---- Storage bucket for product images ----
 -- Public READ via public URLs only. No anon insert/update/delete policies:
 -- uploads and deletes go through api_supabase.php with the service key.
@@ -444,3 +675,5 @@ drop policy if exists "mywms_delete" on storage.objects;
 --     select tablename, rowsecurity from pg_tables where schemaname = 'public' order by tablename;
 --   user accounts (old kv 'users' rows are moved here automatically by api_supabase.php on first use):
 --     select username, company, position, pass_hash is not null as has_pw, pin_hash is not null as has_pin from public."userMaster";
+--   latest data log entries:
+--     select at, actor, source, op, table_name, row_key, changes from public.audit_log order by id desc limit 20;

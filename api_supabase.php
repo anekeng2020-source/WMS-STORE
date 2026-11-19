@@ -41,7 +41,7 @@
 
 /* ---------- config ---------- */
 $CFG = [
-    'url'             => 'https://ehkyrzyfqkspppzslxgc.supabase.co',
+    'url'             => 'https://ljximlcmikpvdtvodwwt.supabase.co',
     'service_key'     => '',                                    // set in config_supabase.php only — never hard-code it here
     'bucket'          => 'mywms',
     'api_key'         => 'smywms',                        // optional legacy app key (public, NOT a security control)
@@ -65,7 +65,7 @@ if ($origin !== '' && in_array($origin, $allowed, true)) {
     header('Vary: Origin');
 }
 header('Access-Control-Allow-Methods: GET, POST, PUT, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, X-API-Key, X-Auth-Token');
+header('Access-Control-Allow-Headers: Content-Type, X-API-Key, X-Auth-Token, X-ERP-Key');
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
@@ -110,24 +110,60 @@ const PARTITION_TABLES = [
     'sales','shifts','promotions','giftcards','purchaseOrders','salesOrders','mpOrders'
 ];
 const MERGE_KEYS = [
-    'stock'=>'code|loc|lotNo|lotSup|mfd|exp|sn','history'=>'id','schedule'=>'id','bookings'=>'id',
+    'stock'=>'code|loc|lotNo|lotSup|mfd|exp|sn|hu?','history'=>'id','huMaster'=>'code','labelLog'=>'id','schedule'=>'id','bookings'=>'id',
     'sales'=>'id','shifts'=>'id','returns'=>'id','stocktake'=>'id','promotions'=>'id','giftcards'=>'code',
     'itemMaster'=>'code','locationMaster'=>'code','customerMaster'=>'code','supplierMaster'=>'code',
     'ngMaster'=>'code','logisticMaster'=>'name','purchaseOrders'=>'id','salesOrders'=>'id',
-    'mpOrders'=>'id','withdrawals'=>'id'
+    'mpOrders'=>'id','withdrawals'=>'id','rentals'=>'id','addonRecords'=>'id'
 ];
 /* tables added later: used only when they exist in the database (their sql_updates file was run) —
    until then load skips them and doesn't announce them, so clients never send rows the DB can't take */
-const OPTIONAL_TABLES = ['withdrawals'];
+const OPTIONAL_TABLES = ['withdrawals','huMaster','labelLog','rentals','addonRecords'];
 /* numbers that clients send as +/- changes (mode "delta"), added up in the database by wms_apply_delta */
 const DELTA_FIELDS = ['stock'=>['qty'], 'giftcards'=>['balance'], 'customerMaster'=>['points','storeCredit','totalSpent']];
 const WEAK_PASSWORDS = ['super123','admin123','password','12345678','123456','1234','0000','admin','superadmin','qwerty'];
 const SECRET_FIELDS  = ['password','pin','passHash','pinHash'];
 
+/* ---------- packages (settings.pkg — picked by the Super Admin on the web) ----------
+ * The web, phone and POS hide every menu outside the company's package; the server backs that up:
+ *   - only a Super Admin may change settings.pkg (guards above keep the stored value for everyone else);
+ *   - writes to tables that only features outside the package use are skipped — the stored rows stay as they are;
+ *   - the ERP API needs the Full System package, the online-store actions need "WMS + Business".
+ * Tables every package uses (stock, history, items, locations, schedule, …) are never blocked. The Super Admin is never
+ * blocked. No package stored = Full System, so companies set up before packages existed keep working.
+ * Keep PKG_TABLE_MIN in step with PKG_DEF in index.html (the lowest package whose menus write that table). */
+const PKG_RANK = ['basic'=>1, 'standard'=>2, 'advanced'=>3, 'business'=>4, 'full'=>5];
+const PKG_TABLE_MIN = [
+    'bookings'=>'standard', 'returns'=>'standard', 'huMaster'=>'standard', 'labelMaster'=>'standard', 'labelLog'=>'standard',
+    'ngMaster'=>'standard', 'logisticMaster'=>'standard', 'purchaseOrders'=>'standard', 'salesOrders'=>'standard',
+    'bomMaster'=>'advanced',
+    'sales'=>'business', 'shifts'=>'business', 'promotions'=>'business', 'giftcards'=>'business', 'mpOrders'=>'business', 'rentals'=>'business',
+    'addonRecords'=>'full'
+];
+function pkg_of($settings){ $p = is_array($settings) ? (string)($settings['pkg'] ?? '') : ''; return isset(PKG_RANK[$p]) ? $p : 'full'; }
+function pkg_settings($cid){
+    static $cache = [];
+    if (!$cid) return [];
+    if (!array_key_exists($cid, $cache)) {
+        $r = sb_req('GET', '/settings?select=data&company=eq.' . rawurlencode($cid));
+        $cache[$cid] = (isset($r[0]['data']) && is_array($r[0]['data'])) ? $r[0]['data'] : [];
+    }
+    return $cache[$cid];
+}
+function pkg_has_rank($settings, $min, $me = null){ if ($me && is_super($me)) return true; return PKG_RANK[pkg_of($settings)] >= PKG_RANK[$min]; }
+function pkg_table_ok($cid, $table, $me){
+    if (is_super($me) || !isset(PKG_TABLE_MIN[$table])) return true;
+    return pkg_has_rank(pkg_settings($cid), PKG_TABLE_MIN[$table]);
+}
+
+
 function safe_id($s){ return preg_match('/^[A-Za-z0-9_-]{1,40}$/', (string)$s) ? (string)$s : null; }
 function rowkey($row, $key){
     if (!is_array($row)) return '';
-    if (strpos($key,'|') !== false){ $o=[]; foreach (explode('|',$key) as $f){ $o[] = isset($row[$f]) ? (string)$row[$f] : ''; } return implode('|',$o); }
+    if (strpos($key,'|') !== false){                   // a trailing "field?" is part of the key only when the row has it (stock in a pallet / tote: hu)
+        $s = ''; foreach (explode('|',$key) as $i => $f){ $opt = substr($f,-1) === '?'; if ($opt) $f = substr($f,0,-1);
+            $v = isset($row[$f]) ? (string)$row[$f] : ''; if ($opt && $v === '') continue; $s .= ($i ? '|' : '') . $v; }
+        return $s; }
     return isset($row[$key]) ? (string)$row[$key] : '';
 }
 /* JSON -> PHP like json_decode(..., true), except that an empty object stays an object (stdClass) so it is written
@@ -150,6 +186,33 @@ function as_map($v){ return ($v instanceof stdClass) ? get_object_vars($v) : (is
 function empty_partition(){ $p=[]; foreach (PARTITION_TABLES as $t) $p[$t]=[]; return $p; }
 
 /* =====================================================================
+ *  Data log (table audit_log, filled by database triggers — see supabase_schema.sql)
+ *  Every write carries who made it; only this file can reach the database, so a browser can't fake it.
+ * ===================================================================== */
+function audit_who(){ $me = $GLOBALS['ME'] ?? null; return is_array($me) ? (string)($me['username'] ?? '') : (string)($GLOBALS['AUDIT_USER'] ?? 'system'); }
+function audit_req(){ if (!isset($GLOBALS['AUDIT_REQ'])) $GLOBALS['AUDIT_REQ'] = bin2hex(random_bytes(8)); return $GLOBALS['AUDIT_REQ']; }
+function audit_src(){
+    $page = preg_match('#/([A-Za-z0-9_-]+)\.html#', (string)($_SERVER['HTTP_REFERER'] ?? ''), $m) ? $m[1] . ' · ' : '';
+    return substr($page . (string)($GLOBALS['action'] ?? ''), 0, 60);
+}
+function audit_header(){
+    return 'X-WMS-Actor: ' . base64_encode(json_encode(['u'=>audit_who(), 'src'=>audit_src(), 'ip'=>client_ip(), 'req'=>audit_req()], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE));
+}
+/* something that changes no table row (sign-in, manager approval, picture). Never stops the request: a failure only goes to the PHP log. */
+function audit_event($op, $company = null, $key = null, $detail = null){
+    $row = ['company'=>$company, 'actor'=>audit_who(), 'source'=>audit_src(), 'ip'=>client_ip(), 'req_id'=>audit_req(), 'op'=>$op, 'row_key'=>$key, 'changes'=>$detail];
+    if (isset($GLOBALS['__SB_HOOK'])) { call_user_func($GLOBALS['__SB_HOOK'], 'POST', '/audit_log', $row, [], false, null); return; }
+    global $CFG;
+    $k = $CFG['service_key']; $headers = ['apikey: ' . $k, 'Content-Type: application/json', 'Prefer: return=minimal'];
+    if (strncmp($k, 'eyJ', 3) === 0) $headers[] = 'Authorization: Bearer ' . $k;
+    $ch = curl_init($CFG['url'] . '/rest/v1/audit_log');
+    curl_setopt_array($ch, [CURLOPT_CUSTOMREQUEST=>'POST', CURLOPT_RETURNTRANSFER=>true, CURLOPT_TIMEOUT=>5, CURLOPT_HTTPHEADER=>$headers,
+        CURLOPT_POSTFIELDS=>json_encode($row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE)]);
+    $resp = curl_exec($ch); $http = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+    if ($resp === false || $http < 200 || $http >= 300) error_log('mywms: audit_event ' . $op . ' failed: http ' . $http);
+}
+
+/* =====================================================================
  *  Supabase REST (PostgREST) + Storage over cURL
  * ===================================================================== */
 function sb_req($method, $path, $body = null, $extraHeaders = [], $isStorage = false, $rawBody = null, $keepEmpty = false){
@@ -157,7 +220,7 @@ function sb_req($method, $path, $body = null, $extraHeaders = [], $isStorage = f
     global $CFG;
     $url = $CFG['url'] . ($isStorage ? '/storage/v1' : '/rest/v1') . $path;
     $key = $CFG['service_key'];
-    $headers = ['apikey: ' . $key];
+    $headers = ['apikey: ' . $key, audit_header()];
     // Legacy service_role is a JWT (starts with eyJ) -> also send as Bearer to elevate to service role.
     // New secret keys (sb_secret_...) are NOT JWTs; the gateway grants access via the apikey header alone.
     if (strncmp($key, 'eyJ', 3) === 0) $headers[] = 'Authorization: Bearer ' . $key;
@@ -191,7 +254,7 @@ function sb_req($method, $path, $body = null, $extraHeaders = [], $isStorage = f
 function sb_try($method, $path, $body = null){
     if (isset($GLOBALS['__SB_HOOK'])) return [200, call_user_func($GLOBALS['__SB_HOOK'], $method, $path, $body, [], false, null)];
     global $CFG;
-    $key = $CFG['service_key']; $headers = ['apikey: ' . $key, 'Content-Type: application/json'];
+    $key = $CFG['service_key']; $headers = ['apikey: ' . $key, 'Content-Type: application/json', audit_header()];
     if (strncmp($key, 'eyJ', 3) === 0) $headers[] = 'Authorization: Bearer ' . $key;
     $ch = curl_init($CFG['url'] . '/rest/v1' . $path);
     curl_setopt_array($ch, [CURLOPT_CUSTOMREQUEST=>$method, CURLOPT_RETURNTRANSFER=>true, CURLOPT_TIMEOUT=>30, CURLOPT_HTTPHEADER=>$headers,
@@ -387,7 +450,7 @@ function require_auth(){
 function merge_users($incoming, $existing, $me){
     if (!is_array($incoming)) return $existing;
     $existing = array_values((array)$existing);
-    $inScope = function($u) use ($me){ return is_super($me) || (is_admin($me) && user_company($u) === user_company($me)); };
+    $inScope = function($u) use ($me){ return is_super($me) || (is_admin($me) && !is_super($u) && user_company($u) === user_company($me)); };   // an Admin never edits a Super Admin
 
     if (!is_admin($me)) return $existing;        // non-admins can't edit users (use ?action=setpin / changepw)
 
@@ -491,6 +554,89 @@ if ($action === 'version') {
     ok(['ok' => true, 'version' => substr(sha1(implode('|', $parts)), 0, 16)]);
 }
 
+/* ---------- ERP API (add-on "ERP Integration") ----------
+ * For an ERP / middleware, not for people: no session, a per-company key instead.
+ *   Header  X-ERP-Key: erp.<company>.<secret>   (made on the web: Add-ons → ERP → API; only its SHA-256 is stored, in settings.erp.keyHash)
+ *   GET  ?action=erp&op=export&dataset=items|stock|movements|po|so|customers|suppliers|sales[&from=YYYY-MM-DD&to=YYYY-MM-DD][&after=<movement id>]
+ *   POST ?action=erp&op=import&dataset=items|customers|suppliers|po|so   body {"rows":[ {...}, ... ]}  (max 2000 rows, upsert by code / id)
+ * Works only while the add-on is switched on for that company (settings.addons.erp === true). */
+if ($action === 'erp') {
+    $key = (string)($_SERVER['HTTP_X_ERP_KEY'] ?? '');
+    if (!preg_match('/^erp\.([A-Za-z0-9_-]{1,40})\.([A-Za-z0-9]{32,128})$/', $key, $km)) fail(401, 'missing or malformed X-ERP-Key');
+    $cid = $km[1];
+    $ipk = 'erp:' . client_ip();
+    if (rl_blocked($ipk, 30, 600)) fail(429, 'too many failed ERP key attempts — wait 10 minutes');
+    $sr = sb_req('GET', '/settings?select=data&company=eq.' . rawurlencode($cid));
+    $st = (isset($sr[0]['data']) && is_array($sr[0]['data'])) ? $sr[0]['data'] : [];
+    $hash = (string)($st['erp']['keyHash'] ?? '');
+    if ($hash === '' || !hash_equals($hash, hash('sha256', $key))) { rl_hit($ipk, 600); fail(401, 'invalid ERP key'); }
+    if (empty($st['addons']['erp'])) fail(403, 'the ERP add-on is switched off for this company');
+    if (!pkg_has_rank($st, 'full')) fail(403, 'the ERP add-on is not in this company\'s package (Full System)');
+    $GLOBALS['AUDIT_USER'] = 'erp-api';
+    $DS = ['items'=>['itemMaster','code'], 'stock'=>['stock',null], 'movements'=>['history',null], 'po'=>['purchaseOrders','id'],
+           'so'=>['salesOrders','id'], 'customers'=>['customerMaster','code'], 'suppliers'=>['supplierMaster','code'], 'sales'=>['sales',null]];
+    $ds = (string)($_GET['dataset'] ?? ''); if (!isset($DS[$ds])) fail(400, 'unknown dataset — use ' . implode(', ', array_keys($DS)));
+    $table = $DS[$ds][0]; $op = (string)($_GET['op'] ?? 'export');
+    if ($op === 'export') {
+        if ($method !== 'GET') fail(405, 'use GET for export');
+        $rows = sb_req('GET', '/' . rawurlencode($table) . '?select=data&company=eq.' . rawurlencode($cid));
+        $out = []; foreach ((array)$rows as $r) if (isset($r['data']) && is_array($r['data'])) $out[] = $r['data'];
+        $from = (string)($_GET['from'] ?? ''); $to = (string)($_GET['to'] ?? ''); $after = (string)($_GET['after'] ?? '');
+        if ($from !== '' || $to !== '') $out = array_values(array_filter($out, function($d) use ($from, $to){ $x = (string)($d['date'] ?? ''); return ($from === '' || $x >= $from) && ($to === '' || $x <= $to); }));
+        if ($after !== '' && is_numeric($after)) $out = array_values(array_filter($out, function($d) use ($after){ $n = preg_replace('/\D/', '', (string)($d['id'] ?? '')); return $n !== '' && (float)$n > (float)$after; }));
+        if ($ds === 'items' || $ds === 'customers' || $ds === 'suppliers') foreach ($out as &$o) { unset($o['img']); } unset($o);
+        ok(['ok'=>true, 'company'=>$cid, 'dataset'=>$ds, 'count'=>count($out), 'rows'=>$out]);
+    }
+    if ($op === 'import') {
+        if ($method !== 'POST') fail(405, 'use POST for import');
+        if (in_array($ds, ['stock','movements','sales'], true)) fail(400, 'stock, movements and POS sales are read-only — they change only through warehouse work');
+        $in = (is_array($body) && isset($body['rows']) && is_array($body['rows'])) ? $body['rows'] : null;
+        if ($in === null) fail(400, 'body must be {"rows":[...]}');
+        if (count($in) > 2000) fail(413, 'max 2000 rows per call');
+        $kf = $DS[$ds][1]; $up = []; $bad = 0; $locked = 0;
+        /* what is stored now: imports merge into it (fields not sent are kept) and orders are matched by their number */
+        $stored = []; foreach ((array)sb_req('GET', '/' . rawurlencode($table) . '?select=rk,data&company=eq.' . rawurlencode($cid)) as $r)
+            if (isset($r['data']) && is_array($r['data'])) $stored[] = $r;
+        $byKey = []; foreach ($stored as $r) { $k = $kf === 'id' ? trim((string)($r['data']['no'] ?? '')) : (string)$r['rk']; if ($k !== '') $byKey[$k] = $r; }
+        $moved = [];                                             // orders whose receiving / picking has started: not overwritten
+        if ($kf === 'id') foreach ((array)sb_req('GET', '/schedule?select=data&company=eq.' . rawurlencode($cid)) as $r) {
+            $d = $r['data'] ?? null; if (!is_array($d)) continue;
+            foreach ((array)($d['lines'] ?? []) as $l) if (is_array($l) && (float)($l['done'] ?? 0) > 0) { $moved[(string)($d['id'] ?? '')] = true; break; } }
+        $seenK = [];
+        foreach ($in as $row) {
+            if (!is_array($row)) { $bad++; continue; }
+            unset($row['passHash'], $row['pinHash'], $row['scheduleId']);
+            foreach (['code','no','name'] as $tf) if (isset($row[$tf]) && is_string($row[$tf])) $row[$tf] = trim($row[$tf]);
+            if ($kf === 'id') {
+                $no = (string)($row['no'] ?? ''); if ($no === '') { $bad++; continue; }
+                if (isset($row['lines']) && !is_array($row['lines'])) { $bad++; continue; }
+                $old = $byKey[$no] ?? null;
+                if ($old) {
+                    $od = $old['data'];
+                    if (isset($od['scheduleId']) && isset($moved[(string)$od['scheduleId']])) { $locked++; continue; }
+                    unset($row['id'], $row['status']);              // keep the stored id, status and schedule link
+                    $data = array_merge($od, $row); $rk = (string)$old['rk'];
+                } else {
+                    $data = $row; $data['id'] = 'ERP-' . preg_replace('/[^A-Za-z0-9_-]/', '', $no);
+                    if (!isset($data['lines'])) $data['lines'] = [];
+                    $data['status'] = (string)($row['status'] ?? 'Ordered'); $rk = $data['id'];
+                }
+                $data['src'] = 'erp-api'; $data['erpDirty'] = true;   // the web app refreshes the linked schedule on its next load
+                if (isset($seenK[$no])) { $bad++; continue; } $seenK[$no] = true;
+            } else {
+                $rk = (string)($row[$kf] ?? ''); if ($rk === '') { $bad++; continue; }
+                $data = isset($byKey[$rk]) ? array_merge($byKey[$rk]['data'], $row) : $row;
+                $data[$kf] = $rk;
+            }
+            $up[] = ['company'=>$cid, 'rk'=>$rk, 'data'=>$data];
+        }
+        if ($up) sb_upsert($table, $up, 'company,rk');
+        audit_event('ERP_IMPORT', $cid, $ds, ['rows'=>count($up), 'skipped'=>$bad, 'locked'=>$locked]);
+        ok(['ok'=>true, 'dataset'=>$ds, 'upserted'=>count($up), 'skipped'=>$bad, 'locked_in_progress'=>$locked]);
+    }
+    fail(400, 'op must be export or import');
+}
+
 /* ---------- login: {username,password} | {username,pin} | {pin, users:[known usernames]} ---------- */
 if ($action === 'login') {
     $b = is_array($body) ? $body : [];
@@ -499,6 +645,7 @@ if ($action === 'login') {
     $pin = preg_replace('/\D/', '', (string)($b['pin'] ?? ''));
     if ($pw === '' && $pin === '') fail(400, 'missing credentials');
     login_guard($uname, $pw === '');
+    $GLOBALS['AUDIT_USER'] = substr($uname, 0, 60);
 
     $users = load_users();
 
@@ -522,9 +669,15 @@ if ($action === 'login') {
         }
         if ($found === null) { rl_hit('pin:' . client_ip(), RL_WINDOW); if ($uname !== '') rl_hit('pinu:' . $uname, 3600); }
     }
-    if ($found === null) { login_failed($uname); fail(401, 'invalid credentials'); }
+    if ($found === null) {
+        $fi = find_user($users, $uname);
+        audit_event('LOGIN_FAIL', $fi !== null ? user_company($users[$fi]) : null, substr($uname, 0, 60), ['method'=>$pw !== '' ? 'password' : 'pin']);
+        login_failed($uname); fail(401, 'invalid credentials');
+    }
 
     $u = $users[$found];
+    $GLOBALS['AUDIT_USER'] = (string)$u['username'];
+    audit_event('LOGIN', user_company($u), (string)$u['username'], ['method'=>$pw !== '' ? 'password' : 'pin']);
     rl_clear('iu:' . client_ip() . '|' . strtolower((string)$u['username']));
     if (!empty($u['passHash']) && password_needs_rehash($u['passHash'], PASSWORD_DEFAULT) && $pw !== '') {
         $users[$found]['passHash'] = password_hash($pw, PASSWORD_DEFAULT); user_put_one($users[$found]); $u = $users[$found];
@@ -546,9 +699,10 @@ if ($action === 'verify') {
     login_guard($uname);
     $i = find_user($USERS, $uname);
     $okPw = $i !== null && !empty($USERS[$i]['passHash']) && password_verify((string)($b['password'] ?? ''), $USERS[$i]['passHash']);
-    if (!$okPw) { login_failed($uname); fail(401, 'invalid credentials'); }
+    if (!$okPw) { audit_event('MANAGER_APPROVE_FAIL', user_company($ME), substr($uname, 0, 60)); login_failed($uname); fail(401, 'invalid credentials'); }
     $u = $USERS[$i];
-    if (!is_mgr($u) || !(is_super($u) || user_company($u) === user_company($ME))) fail(403, 'not a manager of this company');
+    if (!is_mgr($u) || !(is_super($u) || user_company($u) === user_company($ME))) { audit_event('MANAGER_APPROVE_FAIL', user_company($ME), substr($uname, 0, 60)); fail(403, 'not a manager of this company'); }
+    audit_event('MANAGER_APPROVE', user_company($ME), (string)$u['username']);
     ok(['ok'=>true, 'username'=>$u['username'], 'position'=>$u['position'] ?? '']);
 }
 
@@ -644,6 +798,34 @@ function replace_table($cid, $tb, $arr){
     if ($rows) sb_upsert($tb, $rows, 'company,rk');
 }
 
+/* ---------- add-on switches and the ERP key are Super Admin only ----------
+ * settings.addons (which add-ons are on) and settings.erp.keyHash/keyHint/keyAt/keyBy (the ERP API key) decide what the
+ * ERP API may read and write, so only a Super Admin may change them — whatever the client sends. Everyone else's writes
+ * keep the stored values. */
+const ERP_KEY_FIELDS = ['keyHash','keyHint','keyAt','keyBy'];
+function settings_guard_patch($op, $me){
+    if (is_super($me) || !is_array($op)) return $op;
+    $locked = function($p){ $p = array_values((array)$p); if (!$p) return false; if ((string)$p[0] === 'addons' || (string)$p[0] === 'pkg') return true;
+        return (string)$p[0] === 'erp' && (count($p) === 1 || in_array((string)$p[1], ERP_KEY_FIELDS, true)); };
+    $op['set']   = array_values(array_filter((array)($op['set'] ?? []), function($pv) use ($locked){ return !(is_array($pv) && count($pv) === 2 && $locked($pv[0])); }));
+    $op['unset'] = array_values(array_filter((array)($op['unset'] ?? []), function($p) use ($locked){ return !$locked($p); }));
+    return $op;
+}
+function settings_guard_full($cid, $data, $me){
+    if (is_super($me)) return $data;
+    $r = sb_req('GET', '/settings?select=data&company=eq.' . rawurlencode($cid));
+    $old = (isset($r[0]['data']) && is_array($r[0]['data'])) ? $r[0]['data'] : [];
+    $new = as_map($data);
+    if (array_key_exists('addons', $old)) $new['addons'] = $old['addons']; else unset($new['addons']);
+    if (array_key_exists('pkg', $old)) $new['pkg'] = $old['pkg']; else unset($new['pkg']);      // the package is Super Admin only too
+    $oe = (isset($old['erp']) && is_array($old['erp'])) ? $old['erp'] : [];
+    $ne = isset($new['erp']) ? as_map($new['erp']) : null;
+    if ($ne !== null || $oe) { $ne = $ne ?? [];
+        foreach (ERP_KEY_FIELDS as $f) { if (array_key_exists($f, $oe)) $ne[$f] = $oe[$f]; else unset($ne[$f]); }
+        $new['erp'] = $ne ?: new stdClass(); }
+    return $new ?: new stdClass();
+}
+
 if ($action === 'save') {
     if (!is_array($body)) fail(400, 'save body must be the full state');
     if (array_key_exists('companies', $body)) write_global('companies', $body['companies']);
@@ -653,9 +835,10 @@ if ($action === 'save') {
     $settingRows = [];
     foreach ($parts as $cid => $tables) {
         $cid = safe_id($cid); if (!$cid || !can_company($ME, $cid)) continue;   // silently skip companies the caller can't write
-        $settingRows[] = ['company'=>$cid, 'data'=>isset($sets[$cid]) ? $sets[$cid] : new stdClass()];
+        $settingRows[] = ['company'=>$cid, 'data'=>settings_guard_full($cid, isset($sets[$cid]) ? $sets[$cid] : new stdClass(), $ME)];
         $tables = as_map($tables);
-        foreach (PARTITION_TABLES as $tb) replace_table($cid, $tb, isset($tables[$tb]) ? $tables[$tb] : []);
+        foreach (PARTITION_TABLES as $tb) { if (!pkg_table_ok($cid, $tb, $ME)) continue;   // outside the package: leave the stored rows alone
+            replace_table($cid, $tb, isset($tables[$tb]) ? $tables[$tb] : []); }
     }
     if ($settingRows) sb_upsert('settings', $settingRows, 'company');
     ok(['ok'=>true]);
@@ -685,16 +868,17 @@ function settings_patch(&$data, $op){
 if ($action === 'savebatch') {
     if (!is_array($body)) fail(400, 'batch body required');
     $cid = safe_id($body['company'] ?? ''); need_company($ME, $cid);
-    $settingRows = []; $settingPatches = [];
+    $settingRows = []; $settingPatches = []; $pkgSkipped = [];
     $opsKeep = (is_array($bodyKeep) && isset($bodyKeep['ops']) && is_array($bodyKeep['ops'])) ? $bodyKeep['ops'] : [];
     foreach ((isset($body['ops']) && is_array($body['ops']) ? $body['ops'] : []) as $oi => $op) {
         $opK = (isset($opsKeep[$oi]) && is_array($opsKeep[$oi])) ? $opsKeep[$oi] : $op;   // the same op, empty {} kept
         $table = $op['table'] ?? ''; $mode = $op['mode'] ?? 'replace';
         if ($table === 'settings') {
-            if ($mode === 'patch') { $settingPatches[] = $opK; continue; }
-            $settingRows[] = ['company'=>$cid, 'data'=>$opK['data'] ?? new stdClass()]; continue;
+            if ($mode === 'patch') { $settingPatches[] = settings_guard_patch($opK, $ME); continue; }
+            $settingRows[] = ['company'=>$cid, 'data'=>settings_guard_full($cid, $opK['data'] ?? new stdClass(), $ME)]; continue;
         }
         if (!in_array($table, PARTITION_TABLES, true) && !in_array($table, OPTIONAL_TABLES, true)) continue;
+        if (!pkg_table_ok($cid, $table, $ME)) { $pkgSkipped[] = $table; continue; }   // feature outside the package: stored rows stay as they are
         $ep = '/' . rawurlencode($table);
 
         if ($mode === 'merge') {
@@ -746,6 +930,7 @@ if ($action === 'savebatch') {
     $gKeep = (is_array($bodyKeep) && isset($bodyKeep['globals']) && is_array($bodyKeep['globals'])) ? $bodyKeep['globals'] : [];
     foreach (['companies','users','seq','billing'] as $gk) if (array_key_exists($gk, $g))
         write_global($gk, ($gk === 'billing' && isset($gKeep['billing']) && is_array($gKeep['billing'])) ? $gKeep['billing'] : $g[$gk]);
+    if ($pkgSkipped) { $pkgSkipped = array_values(array_unique($pkgSkipped)); audit_event('PKG_BLOCKED', $cid, null, ['tables'=>$pkgSkipped, 'pkg'=>pkg_of(pkg_settings($cid))]); ok(['ok'=>true, 'skipped'=>$pkgSkipped]); }
     ok(['ok'=>true]);
 }
 
@@ -762,15 +947,34 @@ if ($action === 'get' || $action === 'put') {
     need_company($ME, $cid);
     if ($table === 'settings') {
         if ($action === 'get') { $r = sb_req('GET', "/settings?select=data&company=eq." . rawurlencode($cid), null, [], false, null, true); ok(isset($r[0]['data']) ? $r[0]['data'] : new stdClass()); }
-        sb_upsert('settings', [['company'=>$cid,'data'=>$bodyKeep ?? new stdClass()]], 'company'); ok(['ok'=>true]);
+        sb_upsert('settings', [['company'=>$cid,'data'=>settings_guard_full($cid, $bodyKeep ?? new stdClass(), $ME)]], 'company'); ok(['ok'=>true]);
     }
     if (!in_array($table, PARTITION_TABLES, true)) fail(400, 'unknown table');
+    if ($action === 'put' && !pkg_table_ok($cid, $table, $ME)) fail(403, 'this table is not in the company\'s package');
     if ($action === 'get') {
         $out = []; foreach ((array)sb_req('GET', '/' . rawurlencode($table) . "?select=data&company=eq." . rawurlencode($cid), null, [], false, null, true) as $r) $out[] = $r['data'];
         ok($out);
     }
     replace_table($cid, $table, $bodyKeep);
     ok(['ok'=>true,'company'=>$cid,'table'=>$table]);
+}
+
+/* ---------- auditlog: read the data log (Admin: own company · Super Admin: all); there is no way to write it from here ---------- */
+if ($action === 'auditlog') {
+    if (!is_admin($ME)) fail(403, 'admins only');
+    $q = '/audit_log?select=id,at,company,actor,source,ip,req_id,op,table_name,row_key,changes&order=id.desc';
+    $cid = is_super($ME) ? (string)($_GET['company'] ?? '') : user_company($ME);
+    if ($cid !== '') { if (!safe_id($cid)) fail(400, 'bad company'); $q .= '&company=eq.' . rawurlencode($cid); }
+    foreach (['from'=>'gte', 'to'=>'lt'] as $f => $cmp) if (!empty($_GET[$f])) {
+        $ts = strtotime((string)$_GET[$f]); if ($ts === false) fail(400, 'bad date');
+        $q .= '&at=' . $cmp . '.' . gmdate('Y-m-d\TH:i:s\Z', $ts);
+    }
+    foreach (['actor'=>'actor', 'table'=>'table_name', 'op'=>'op'] as $f => $col) if (($_GET[$f] ?? '') !== '') $q .= '&' . $col . '=eq.' . rawurlencode(substr((string)$_GET[$f], 0, 80));
+    if (($_GET['key'] ?? '') !== '') $q .= '&row_key=ilike.*' . rawurlencode(str_replace('*', '', substr((string)$_GET['key'], 0, 80))) . '*';
+    $limit = 100; $offset = max(0, (int)($_GET['offset'] ?? 0));
+    $rows = (array)sb_req('GET', $q . '&limit=' . ($limit + 1) . '&offset=' . $offset);
+    $more = count($rows) > $limit;
+    ok(['ok'=>true, 'rows'=>array_slice($rows, 0, $limit), 'more'=>$more, 'offset'=>$offset, 'limit'=>$limit]);
 }
 
 /* ---------- upload / delimg : Supabase Storage ---------- */
@@ -784,6 +988,7 @@ if ($action === 'upload' || $action === 'delimg') {
 
     if ($action === 'delimg') {
         sb_req('DELETE', "/object/$bucket/$objPath", null, [], true);
+        audit_event('IMAGE_DELETE', $cid, $code);
         ok(['ok'=>true, 'deleted'=>$objPath]);
     }
 
@@ -796,6 +1001,9 @@ if ($action === 'upload' || $action === 'delimg') {
 
     // must be a real image; always re-encode to JPEG (strips anything that isn't pixels)
     if (!function_exists('imagecreatefromstring')) fail(500, 'GD extension is required for image uploads');
+    $sz = @getimagesizefromstring($bytes);                       // reject huge pixel counts before decoding (memory)
+    if ($sz === false) fail(400, 'not a valid image');
+    if ((int)$sz[0] * (int)$sz[1] > 25000000) fail(413, 'image dimensions too large');
     $im = @imagecreatefromstring($bytes);
     if ($im === false) fail(400, 'not a valid image');
     $w = imagesx($im); $h = imagesy($im); $max = 1000;
@@ -804,10 +1012,14 @@ if ($action === 'upload' || $action === 'delimg') {
     ob_start(); imagejpeg($im, null, 85); $bytes = ob_get_clean(); imagedestroy($im);
 
     sb_req('POST', "/object/$bucket/$objPath", null, ['Content-Type: image/jpeg', 'x-upsert: true'], true, $bytes);
+    audit_event('IMAGE_UPLOAD', $cid, $code);
     ok(['ok'=>true, 'path'=>$publicUrl . '?v=' . time()]);
 }
 
-/* ---- Marketplace (Shopee / Lazada) ---- */
-if (strncmp($action, 'mp_', 3) === 0 && function_exists('mp_handle')) mp_handle($action, $ME, $body);
+/* ---- Marketplace (Shopee / Lazada) — online store is in "WMS + Business" and up ---- */
+if (strncmp($action, 'mp_', 3) === 0 && function_exists('mp_handle')) {
+    if (!pkg_has_rank(pkg_settings(user_company($ME)), 'business', $ME)) fail(403, 'the online store is not in this company\'s package');
+    mp_handle($action, $ME, $body);
+}
 
 fail(400, 'unknown action');
